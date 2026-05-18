@@ -6,6 +6,7 @@ Phase 0 commands:
     personal-llm sleep          — run one sleep-time cycle (writes today's growth log).
     personal-llm ingest FILE    — copy a file into the vault's raw/ for later ingestion.
     personal-llm status         — health check + vault summary.
+    personal-llm skills list    — show discovered SKILL.md skills (vault + builtin + imported).
     personal-llm version        — print version.
 
 Phase 1+ adds: mcp (add/list/remove), audit (--since), export/import/inspect.
@@ -16,14 +17,16 @@ from __future__ import annotations
 import shutil
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from personal_llm import __version__, config as config_mod, vault as vault_mod
+from personal_llm import __version__
+from personal_llm import config as config_mod
+from personal_llm import vault as vault_mod
 
 app = typer.Typer(
     name="personal-llm",
@@ -52,7 +55,7 @@ def version() -> None:
 @app.command()
 def init(
     path: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(help="Where to scaffold the vault. Default: ~/.personal-llm/vault"),
     ] = None,
 ) -> None:
@@ -148,7 +151,7 @@ def init(
 @app.command()
 def chat(
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -174,7 +177,7 @@ def chat(
 @app.command()
 def sleep(
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -197,7 +200,7 @@ def sleep(
 def ingest(
     file: Annotated[Path, typer.Argument(help="File to drop into the vault's raw/.")],
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -231,7 +234,7 @@ def ingest(
 @app.command()
 def status(
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -268,6 +271,54 @@ def status(
         except Exception as e:
             table.add_row("inference", f"[red]{e}[/red]")
 
+    console.print(table)
+
+
+# --------------------------------------------------------------------------- skills
+
+skills_app = typer.Typer(help="Inspect the SKILL.md skill library.", no_args_is_help=True)
+app.add_typer(skills_app, name="skills")
+
+
+@skills_app.command("list")
+def skills_list(
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """List all skills discovered across vault, builtins, and imported lobes."""
+    vault_path = vault_mod.resolve_vault_path(vault)
+    vault_arg = vault_path if vault_mod.exists(vault_path) else None
+
+    from personal_llm.skills import SkillParseError, discover
+
+    try:
+        skills = discover(vault_arg)
+    except SkillParseError as e:
+        console.print(f"[red]Skill parse error:[/red] {e}")
+        raise typer.Exit(1) from e
+
+    if not skills:
+        console.print("[dim]No skills discovered.[/dim]")
+        if vault_arg is None:
+            console.print(f"[dim](No vault at {vault_path} — only builtins would be shown.)[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("name")
+    table.add_column("source", style="dim")
+    table.add_column("version", style="dim")
+    table.add_column("capabilities", style="dim")
+    table.add_column("description")
+    for s in skills:
+        table.add_row(
+            s.qualified_name,
+            s.source.value,
+            s.version or "-",
+            ", ".join(s.capabilities) or "-",
+            s.description,
+        )
     console.print(table)
 
 
