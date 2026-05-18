@@ -1,0 +1,67 @@
+[project]
+name = "personal-llm"
+version = "0.0.1"
+description = "A personal LLM that grows with you. Open-source seed for your own personal AI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "personal-llm contributors" }]
+keywords = ["llm", "personal-ai", "local-first", "self-hosted", "ollama", "agent"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "pyyaml>=6.0",
+    "ollama>=0.5",
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+personal-llm = "personal_llm.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/personal-llm/personal-llm"
+Documentation = "https://github.com/personal-llm/personal-llm/blob/main/docs/ARCHITECTURE.md"
+Issues = "https://github.com/personal-llm/personal-llm/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/personal_llm"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"examples" = "personal_llm/_examples"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

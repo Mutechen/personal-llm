@@ -1,0 +1,85 @@
+# personal-llm — sidecar services.
+#
+# Phase 0 status: intentionally sparse. The services below come online as
+# the features that need them land:
+#   - Phase 1: searxng (self-hosted search, the default chosen in §14)
+#   - Phase 2+: qdrant (vector store when wiki/recall scale demands it)
+#   - Optional: an all-in-one container running the personal-llm agent + web UI
+#
+# Native install is the default (see docs/GETTING_STARTED.md).
+# Use compose only for the services below when you opt into them.
+#
+# The vault is ALWAYS a bind mount — your data, your filesystem, never a Docker
+# volume. Set $PERSONAL_LLM_VAULT to override the default ~/.personal-llm/vault.
+
+services:
+
+  # ============================================================================
+  # Phase 1 services
+  # ============================================================================
+
+  # SearXNG — self-hosted, privacy-preserving search.
+  # The default backend for the agent's web_search tool (§7.1, §14).
+  # Uncomment when wiring up search in Phase 1.
+  #
+  # searxng:
+  #   image: searxng/searxng:latest
+  #   container_name: personal-llm-searxng
+  #   ports:
+  #     - "127.0.0.1:8888:8080"
+  #   volumes:
+  #     - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+  #   environment:
+  #     - INSTANCE_NAME=personal-llm-search
+  #   restart: unless-stopped
+
+  # ============================================================================
+  # Phase 2+ services
+  # ============================================================================
+
+  # Qdrant — local vector store.
+  # Only spin up once wiki/recall exceeds ~10k chunks and file-based search is
+  # too slow (see §4 L4 upgrade trigger).
+  #
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   container_name: personal-llm-qdrant
+  #   ports:
+  #     - "127.0.0.1:6333:6333"
+  #   volumes:
+  #     - ${PERSONAL_LLM_VAULT:-${HOME}/.personal-llm/vault}/data/qdrant:/qdrant/storage
+  #   restart: unless-stopped
+
+  # ============================================================================
+  # Optional all-in-one
+  # ============================================================================
+
+  # For forkers who want everything containerized — e.g., fresh laptop with no
+  # Python setup. The agent runs in a container with a bind-mounted vault.
+  # Reach the chat REPL via:
+  #     docker compose exec agent personal-llm chat
+  # …or use the future web UI on port 8080.
+  #
+  # On Linux, set ollama_endpoint to host.docker.internal so the container can
+  # reach the host's Ollama. On Apple Silicon, run Ollama native (MPS doesn't
+  # pass through Docker) — same flag still works.
+  #
+  # agent:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/agent/Dockerfile
+  #   container_name: personal-llm-agent
+  #   volumes:
+  #     - ${PERSONAL_LLM_VAULT:-${HOME}/.personal-llm/vault}:/vault
+  #   environment:
+  #     - PERSONAL_LLM_VAULT=/vault
+  #     - OLLAMA_HOST=http://host.docker.internal:11434
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   ports:
+  #     - "127.0.0.1:8080:8080"   # future web UI
+  #   restart: unless-stopped
+
+# Named volumes are deliberately not used here. All persistent state lives on
+# the host filesystem under the user's vault, so backups and Obsidian work the
+# way you'd expect.

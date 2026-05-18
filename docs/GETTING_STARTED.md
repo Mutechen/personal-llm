@@ -1,0 +1,252 @@
+# Getting started
+
+A walk-through from a fresh clone to your first chat. Phase 0 — minimal but real.
+
+## Two paths
+
+personal-llm runs as a **hybrid** of native and containerized components (see [ARCHITECTURE.md §9](ARCHITECTURE.md)). You have two install paths:
+
+- **Native install (default, recommended).** Best chat UX, full GPU acceleration on Linux *and* Apple Silicon, lowest RAM overhead. Sections 1–7 below.
+- **Docker compose alternative.** Easier "one command" setup, uniform across forkers, but worse daily chat UX and no MPS GPU on Mac. See [Alternative: Docker compose](#alternative-docker-compose) at the end.
+
+Either way the *skill sandbox* runs in Docker (Phase 1+), so Docker is a soft dependency even on the native path. Install it once and you're set.
+
+## What you'll need
+
+| | |
+|---|---|
+| Python | 3.11+ |
+| `uv` | recommended (faster), or `pip` works |
+| [Ollama](https://ollama.com) | for the local model |
+| [Docker](https://docs.docker.com/get-docker/) | for the skill sandbox (Phase 1+) and optional sidecar services |
+| Hardware | a GPU with ≥5 GB VRAM is comfortable; CPU-only works but is slow |
+| Disk | ~10 GB free for the model weights |
+
+If you're on Ubuntu/Debian:
+
+```bash
+# uv (one-line install)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+## 1. Clone and install
+
+```bash
+git clone https://github.com/<your-fork>/personal-llm.git
+cd personal-llm
+uv sync
+```
+
+That installs the `personal-llm` CLI into a project-local venv. To use it without activating the venv, prefix commands with `uv run`:
+
+```bash
+uv run personal-llm --help
+```
+
+…or `source .venv/bin/activate` once and skip the prefix.
+
+## 2. Initialize your vault
+
+```bash
+uv run personal-llm init
+```
+
+The init wizard will:
+
+1. **Probe your hardware** (RAM, disk, GPU/VRAM) and suggest a base model that fits.
+2. Ask where to put the vault (default: `~/.personal-llm/vault/`).
+3. Ask which **starter identity** to use — *minimal*, *journaling-companion*, or *coding-buddy*. Pick any; you'll edit later.
+4. Ask for your **PII redaction list** — display name, email, optional phone and address. These are redacted before any external call (Phase 1+).
+5. Ask your **monthly cloud budget cap**.
+6. **Scaffold the vault** with the directory structure and write `config.yaml`.
+
+When it's done, your vault looks like this:
+
+```
+~/.personal-llm/vault/
+├── config.yaml            # editable runtime config
+├── identity.md            # YOUR identity — edit this to make it yours
+├── raw/                   # drop source material here
+├── wiki/                  # the agent-maintained wiki
+├── skills/                # your skill library (will grow over time)
+├── data/                  # runtime state — don't edit by hand
+└── growth/                # daily growth logs
+```
+
+## 3. Pull the model
+
+The init wizard suggested a model based on your hardware. Pull it with Ollama:
+
+```bash
+ollama pull qwen3:8b     # default for ~6 GB VRAM (~5 GB on disk)
+# or whatever the wizard suggested
+```
+
+This downloads ~5 GB. First-time only.
+
+## 4. Start chatting
+
+```bash
+uv run personal-llm chat
+```
+
+You should see a banner, then a `you:` prompt. Try:
+
+```
+you: hi — who are you?
+```
+
+The agent reads `identity.md` and responds. Type `/help` to see runtime commands, `/quit` to exit.
+
+Each session is persisted as a JSONL file in `<vault>/data/interactions/`. The next session has access to the last 20 turns across all sessions, so the agent remembers you across runs.
+
+## 5. Customize your identity
+
+This is the highest-leverage thing you can do.
+
+```bash
+$EDITOR ~/.personal-llm/vault/identity.md
+```
+
+Fill in the `Background` section — name, current projects, things to never bring up. Anything in this file is loaded into every chat turn's system prompt.
+
+## 6. (Optional) Wire up the sleep-time loop
+
+Phase 0's sleep-time loop is a heartbeat — it writes a daily growth log so you can see the agent is alive. Phase 1+ adds real work (ingestion, wiki updates, learning sessions).
+
+Run it manually:
+
+```bash
+uv run personal-llm sleep
+cat ~/.personal-llm/vault/growth/$(date +%F).md
+```
+
+…or schedule it via cron:
+
+```cron
+0 3 * * *  /path/to/uv run --directory /path/to/personal-llm personal-llm sleep
+```
+
+## 7. Check status anytime
+
+```bash
+uv run personal-llm status
+```
+
+Shows vault location, model, budget, validation, and a live inference health check.
+
+## Phase 0 limits — what's NOT here yet
+
+Read the architecture doc ([docs/ARCHITECTURE.md](ARCHITECTURE.md)) for the full picture. The big things deliberately absent in Phase 0:
+
+- **No tools.** The agent can chat but can't search the web, read files, or run code. (Phase 1 adds tools via MCP.)
+- **No wiki population.** The agent doesn't yet update wiki pages from `raw/`. `personal-llm ingest <file>` copies files into `raw/` but doesn't parse them yet. (Phase 1.)
+- **No skill library.** The agent can't yet write, test, or save its own skills. (Phase 1.)
+- **No tutors / cloud escalation.** Everything stays local. (Phase 1+.)
+- **No fine-tuning.** No LoRAs trained yet. (Phase 2+.)
+- **No lobes.** Export/import not yet wired. (Phase 1+.)
+
+Phase 0 exists so you can chat with a persistent local model that knows you, and verify the foundation works on your machine before we build the rest on top of it.
+
+## When things go wrong
+
+| Symptom | Try |
+|---|---|
+| `Cannot reach Ollama` | `ollama serve` in another terminal, or check the endpoint in `config.yaml` |
+| `Model ... not found in Ollama` | `ollama pull <model>` |
+| Agent forgets the previous session | Check `~/.personal-llm/vault/data/interactions/` exists and has `.jsonl` files |
+| Wrong vault picked up | Pass `--vault <path>` to any command; or set `$PERSONAL_LLM_VAULT` |
+| Slow first response | Ollama loads the model on first request; subsequent calls are fast |
+| `uv sync` → `failed to symlink ... Operation not permitted` | The repo is on an exFAT / NTFS / FAT32 drive that doesn't support symlinks. See [Running from a non-Unix filesystem](#running-from-a-non-unix-filesystem-exfat-ntfs) below. |
+
+### Running from a non-Unix filesystem (exFAT, NTFS)
+
+If you cloned the repo onto an external drive formatted exFAT, NTFS, or FAT32 (common with portable SSDs that need to work on Windows too), Python tooling will hit limitations: no symbolic links, no Unix file permissions, no hard links. The fix is to keep the *source* where it is and put the *venv* (and other ephemeral state) on your host's normal Unix filesystem.
+
+**Put the venv outside the external drive:**
+
+```bash
+# One-time: tell uv to use a venv outside the exFAT/NTFS drive
+export UV_PROJECT_ENVIRONMENT=~/.venvs/personal-llm
+
+# Persist for future shells
+echo 'export UV_PROJECT_ENVIRONMENT=~/.venvs/personal-llm' >> ~/.bashrc
+
+# Now sync — the venv lives at ~/.venvs/personal-llm, the source stays where you cloned it
+uv sync
+uv run personal-llm --help
+```
+
+**Other things to keep on a Unix filesystem, not the external drive:**
+
+- **Your vault** (default: `~/.personal-llm/vault/`). The vault uses SQLite (Letta in Phase 1+) and benefits from real Unix file locking and permissions. Keeping the default location avoids exFAT pain.
+- **Ollama models** (default: `~/.ollama/models/`). Already on your home filesystem; no action needed.
+
+**What's fine on exFAT/NTFS:**
+
+- The source code itself (Python imports, Git, your editor).
+- `raw/` source material in the vault, if you choose to put the vault on the external drive.
+- Wiki markdown files.
+
+**What breaks on exFAT/NTFS:**
+
+- Python venvs (symlink to interpreter, executable file mode bits).
+- SQLite write performance and locking (Letta will be slower and may error under concurrent access).
+- Anything that needs `chmod +x` or `ln -s`.
+- Docker bind mounts may have permission issues (everything appears as the uid/gid set in the mount options).
+
+## What to do next
+
+- Use it for a week. See what feels right and what doesn't. The whole project's hypothesis is that the *growth curve* is the value — Phase 0 is just the seed.
+- When you're ready, the Phase 1 milestone (in [ARCHITECTURE.md §11](ARCHITECTURE.md)) is: real ingestion + wiki + skill library v1 + first cloud tutor + lobe export/import.
+
+## Alternative: Docker compose
+
+For forkers who want one command instead of seven, the repo ships a `docker-compose.yml` at the root that brings up the sidecar services (and optionally the agent itself) in containers. **You still need Ollama running native** (especially on Apple Silicon — Docker can't access MPS).
+
+### What compose runs
+
+In Phase 0 the compose file is intentionally sparse — the sidecars come online as features land. See [ARCHITECTURE.md §9](ARCHITECTURE.md) for the full split. Roughly:
+
+- **Phase 1**: SearXNG (search backend), the skill sandbox image.
+- **Phase 2+**: Qdrant (vector store), optional all-in-one agent container with a web UI.
+
+### Native + compose (the recommended hybrid)
+
+Use compose for the sidecar services; run the agent native:
+
+```bash
+docker compose up -d searxng              # once it's uncommented in Phase 1
+uv run personal-llm chat                  # chat stays native
+```
+
+Your vault stays at `~/.personal-llm/vault/` as a bind mount; compose services that need it read/write through that mount, never a Docker-managed volume.
+
+### Full containerization (compose-first)
+
+Once the optional `agent` service in `docker-compose.yml` is wired up (Phase 2+), you can run everything containerized:
+
+```bash
+docker compose up -d                      # all services
+docker compose exec agent personal-llm chat
+```
+
+You give up some chat UX (`docker exec` is clunkier than a native terminal) in exchange for one-command setup uniformity.
+
+### GPU passthrough
+
+- **Linux + NVIDIA**: install [`nvidia-container-toolkit`](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) and the compose file sets `runtime: nvidia` on services that need it. Most users don't need this — Ollama runs native and uses the GPU directly.
+- **Apple Silicon**: Docker cannot pass MPS through. **Run Ollama native on Mac.** Compose can still bring up SearXNG, Qdrant, and other sidecars.
+- **CPU-only**: nothing to configure; everything works at CPU speed.
+
+### Vault location with compose
+
+If your vault lives somewhere other than the default, set `$PERSONAL_LLM_VAULT` before invoking compose so the bind mounts resolve correctly:
+
+```bash
+export PERSONAL_LLM_VAULT=/path/to/my/vault
+docker compose up -d
+```
