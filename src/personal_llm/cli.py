@@ -131,6 +131,12 @@ def init(
     cfg.redaction.home_address = home_address
     config_mod.save(vault_path, cfg)
 
+    # 7b) Thread the display name into identity.md's placeholder so the agent
+    # greets the user by name out of the box. No-op if the user has already
+    # edited the file (re-runnable init).
+    if display_name:
+        vault_mod.personalize_identity(vault_path, display_name)
+
     # 8) Done.
     console.print("\n[green]Vault created.[/green]\n")
     _print_next_steps(vault_path, chosen_model)
