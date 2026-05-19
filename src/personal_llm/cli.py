@@ -6,6 +6,8 @@ Phase 0 commands:
     personal-llm sleep          — run one sleep-time cycle (writes today's growth log).
     personal-llm ingest FILE    — copy a file into the vault's raw/ for later ingestion.
     personal-llm status         — health check + vault summary.
+    personal-llm skills list    — show discovered SKILL.md skills (vault + builtin + imported).
+    personal-llm ask PROMPT     — one-shot agent invocation; can call skills.
     personal-llm version        — print version.
 
 Phase 1+ adds: mcp (add/list/remove), audit (--since), export/import/inspect.
@@ -16,14 +18,16 @@ from __future__ import annotations
 import shutil
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from personal_llm import __version__, config as config_mod, vault as vault_mod
+from personal_llm import __version__
+from personal_llm import config as config_mod
+from personal_llm import vault as vault_mod
 
 app = typer.Typer(
     name="personal-llm",
@@ -52,7 +56,7 @@ def version() -> None:
 @app.command()
 def init(
     path: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(help="Where to scaffold the vault. Default: ~/.personal-llm/vault"),
     ] = None,
 ) -> None:
@@ -131,6 +135,12 @@ def init(
     cfg.redaction.home_address = home_address
     config_mod.save(vault_path, cfg)
 
+    # 7b) Thread the display name into identity.md's placeholder so the agent
+    # greets the user by name out of the box. No-op if the user has already
+    # edited the file (re-runnable init).
+    if display_name:
+        vault_mod.personalize_identity(vault_path, display_name)
+
     # 8) Done.
     console.print("\n[green]Vault created.[/green]\n")
     _print_next_steps(vault_path, chosen_model)
@@ -142,7 +152,7 @@ def init(
 @app.command()
 def chat(
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -168,7 +178,7 @@ def chat(
 @app.command()
 def sleep(
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -191,7 +201,7 @@ def sleep(
 def ingest(
     file: Annotated[Path, typer.Argument(help="File to drop into the vault's raw/.")],
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -225,7 +235,7 @@ def ingest(
 @app.command()
 def status(
     vault: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
@@ -262,6 +272,95 @@ def status(
         except Exception as e:
             table.add_row("inference", f"[red]{e}[/red]")
 
+    console.print(table)
+
+
+# --------------------------------------------------------------------------- ask
+
+
+@app.command()
+def ask(
+    prompt: Annotated[str, typer.Argument(help="The question or task for the agent.")],
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+    max_steps: Annotated[
+        int,
+        typer.Option("--max-steps", help="Cap on agent reasoning steps."),
+    ] = 6,
+) -> None:
+    """Single-shot agent invocation. The agent can call any discovered skill.
+
+    Separate from `chat` for now — `chat` still runs the simple Phase 0 streaming
+    loop without tools. Once the agent path is trusted, the two will merge.
+    """
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(
+            f"[red]No vault at {vault_path}.[/red] Run [bold]personal-llm init[/bold] first."
+        )
+        raise typer.Exit(1)
+
+    cfg = config_mod.load(vault_path)
+
+    from personal_llm.agent.smol import ask as run_ask
+
+    result = run_ask(vault_path, cfg, prompt, max_steps=max_steps)
+    console.rule("[bold]answer[/bold]")
+    console.print(result.answer)
+    console.print()
+    console.print(
+        f"[dim]steps: {result.steps_taken}  ·  tools: "
+        f"{', '.join(result.tools_available) or '(none)'}[/dim]"
+    )
+
+
+# --------------------------------------------------------------------------- skills
+
+skills_app = typer.Typer(help="Inspect the SKILL.md skill library.", no_args_is_help=True)
+app.add_typer(skills_app, name="skills")
+
+
+@skills_app.command("list")
+def skills_list(
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """List all skills discovered across vault, builtins, and imported lobes."""
+    vault_path = vault_mod.resolve_vault_path(vault)
+    vault_arg = vault_path if vault_mod.exists(vault_path) else None
+
+    from personal_llm.skills import SkillParseError, discover
+
+    try:
+        skills = discover(vault_arg)
+    except SkillParseError as e:
+        console.print(f"[red]Skill parse error:[/red] {e}")
+        raise typer.Exit(1) from e
+
+    if not skills:
+        console.print("[dim]No skills discovered.[/dim]")
+        if vault_arg is None:
+            console.print(f"[dim](No vault at {vault_path} — only builtins would be shown.)[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+    table.add_column("name")
+    table.add_column("source", style="dim")
+    table.add_column("version", style="dim")
+    table.add_column("capabilities", style="dim")
+    table.add_column("description")
+    for s in skills:
+        table.add_row(
+            s.qualified_name,
+            s.source.value,
+            s.version or "-",
+            ", ".join(s.capabilities) or "-",
+            s.description,
+        )
     console.print(table)
 
 

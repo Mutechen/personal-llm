@@ -27,6 +27,7 @@ dependencies = [
     "pyyaml>=6.0",
     "ollama>=0.5",
     "psutil>=5.9",
+    "smolagents[openai]>=1.25",
 ]
 
 [project.optional-dependencies]
@@ -65,3 +66,6 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "integration: requires a live Ollama with the configured model. Opt in with --run-integration.",
+]

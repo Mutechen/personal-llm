@@ -103,6 +103,18 @@ The agent reads `identity.md` and responds. Type `/help` to see runtime commands
 
 Each session is persisted as a JSONL file in `<vault>/data/interactions/`. The next session has access to the last 20 turns across all sessions, so the agent remembers you across runs.
 
+### Try the tool-using agent (Phase 1, single-shot)
+
+The chat REPL above is the Phase 0 path — bare model, no tools. Phase 1 ships a separate command, `personal-llm ask`, that runs a smolagents-backed agent which can invoke any discovered skill (see [§4 L5 of ARCHITECTURE.md](ARCHITECTURE.md)).
+
+```bash
+personal-llm ask "what's the capital of France?"
+personal-llm skills list                 # see what skills are wired up
+personal-llm ask "read identity.md and tell me one thing about me"
+```
+
+The chat REPL will switch to this agent path in the next chunk; for now the two surfaces are deliberately separate so the agent loop can stabilize before it replaces the bare-model REPL.
+
 ## 5. Customize your identity
 
 This is the highest-leverage thing you can do.
@@ -138,18 +150,28 @@ uv run personal-llm status
 
 Shows vault location, model, budget, validation, and a live inference health check.
 
-## Phase 0 limits — what's NOT here yet
+## What's here vs. what's NOT here yet
 
-Read the architecture doc ([docs/ARCHITECTURE.md](ARCHITECTURE.md)) for the full picture. The big things deliberately absent in Phase 0:
+Read the architecture doc ([docs/ARCHITECTURE.md](ARCHITECTURE.md)) for the full picture. The big rocks:
 
-- **No tools.** The agent can chat but can't search the web, read files, or run code. (Phase 1 adds tools via MCP.)
-- **No wiki population.** The agent doesn't yet update wiki pages from `raw/`. `personal-llm ingest <file>` copies files into `raw/` but doesn't parse them yet. (Phase 1.)
-- **No skill library.** The agent can't yet write, test, or save its own skills. (Phase 1.)
-- **No tutors / cloud escalation.** Everything stays local. (Phase 1+.)
-- **No fine-tuning.** No LoRAs trained yet. (Phase 2+.)
-- **No lobes.** Export/import not yet wired. (Phase 1+.)
+**Landed (Phase 1, on branch `phase1/skills-registry`):**
 
-Phase 0 exists so you can chat with a persistent local model that knows you, and verify the foundation works on your machine before we build the rest on top of it.
+- **Skill library v1** — `SKILL.md` discovery + parser + namespace precedence (`vault > builtin > imported`). `personal-llm skills list`.
+- **First invocable skill** — `read_vault_file` (read a UTF-8 text file under your vault) with safety checks against vault-escape, oversize, and binary content.
+- **Agent loop v1** — smolagents `CodeAgent` against your local Ollama via the OpenAI-compatible `/v1` endpoint. Exposed as `personal-llm ask "..."`.
+
+**Still missing (next chunks):**
+
+- **Agent in the chat REPL.** `personal-llm chat` is still the bare-model loop. The next chunk wires the agent in so chat can call skills mid-conversation. (After that lands, the branch becomes PR-ready.)
+- **More skills than just `read_vault_file`.** Listing dir contents, writing wiki pages, searching the web (via MCP) — all upcoming.
+- **MCP client.** The agent can't yet talk to MCP servers (Phase 1+).
+- **Wiki population from `raw/`.** `personal-llm ingest <file>` still just copies files into `raw/`; parsing + wiki updates land later in Phase 1.
+- **Memory upgrade.** Still the Phase 0 JSONL log. Letta-as-library swap comes after the chat REPL chunk.
+- **Tutors / cloud escalation.** Everything stays local. (Phase 1+.)
+- **Fine-tuning.** No LoRAs trained yet. (Phase 2+.)
+- **Lobes export/import.** Namespace directories exist, no commands yet. (Phase 1+.)
+
+If you want to verify the foundation on your machine before going further, the chat REPL + `ask` together are enough to see the seed running end-to-end with both surfaces.
 
 ## When things go wrong
 

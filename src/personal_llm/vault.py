@@ -116,6 +116,30 @@ def scaffold(vault_path: Path, identity_source: Path | None = None) -> None:
         shutil.copy2(example, target)
 
 
+def personalize_identity(vault_path: Path, display_name: str) -> bool:
+    """Replace the `(your name)` placeholder in identity.md with the user's name.
+
+    Run once during `init`, after the skeleton is copied and the user has supplied
+    a display name. Idempotent: if the placeholder is already gone (user edited
+    the file, or a prior init already substituted), this is a no-op.
+
+    This is the init wizard threading user-supplied input through during
+    scaffolding — *not* the runtime agent rewriting its own system prompt.
+    The hard rule "agent never writes identity.md" still holds at chat/sleep time.
+    """
+    if not display_name:
+        return False
+    path = vault_path / IDENTITY_FILENAME
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    placeholder = "(your name)"
+    if placeholder not in text:
+        return False
+    path.write_text(text.replace(placeholder, display_name), encoding="utf-8")
+    return True
+
+
 def _skeleton_dir() -> Path:
     """Locate examples/vault-skeleton/ relative to this package.
 
