@@ -2,7 +2,7 @@
 
 A personal LLM that grows with you. Open-source seed for your own personal AI.
 
-**Status:** Phase 0 ("newborn") — early scaffolding.
+**Status:** Phase 1 in progress — skill library + agent loop landed on `phase1/skills-registry`. Phase 0 ("newborn") commands all work on `main`.
 
 ## What this is
 
@@ -22,7 +22,9 @@ git clone https://github.com/<your-fork>/personal-llm.git
 cd personal-llm
 uv sync                              # install package + deps
 personal-llm init                    # creates a vault at ~/.personal-llm/vault/
-personal-llm chat                    # opens a chat in your terminal
+personal-llm chat                    # opens a chat in your terminal (bare-model REPL today)
+personal-llm ask "what's 2 + 2?"     # one-shot agent run (can call skills)
+personal-llm skills list             # show discovered SKILL.md skills
 ```
 
 For the install/init/configure walkthrough, see [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).

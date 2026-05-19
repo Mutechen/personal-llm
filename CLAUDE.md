@@ -18,16 +18,23 @@ The vision: a local-first AI that starts small and grows in capability through a
 - **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** — onboarding for forkers, including Docker setup and the exFAT/non-Unix-filesystem troubleshooting.
 - **[README.md](README.md)** — short intro + quick start.
 
-## Current status — Phase 0 ("newborn") scaffolded
+## Current status — Phase 1 in progress (branch `phase1/skills-registry`)
 
-Phase 0 ships: `personal-llm init` (wizard with hardware probe), `personal-llm chat` (streaming chat against local Ollama, identity loaded, cross-session recall via JSONL stub), `personal-llm sleep` (heartbeat growth log), `personal-llm ingest` (copies file to vault `raw/`, no parsing yet), `personal-llm status` (vault validation + inference health).
+Phase 0 commands still work: `init`, `chat`, `sleep`, `ingest`, `status`, `version`.
 
-**Phase 0 deliberately stubs** several layers — they ship for real in Phase 1:
-- **Memory** uses a thin JSONL log (`src/personal_llm/memory/simple.py`), not Letta. The interface is small so the swap is one module.
-- **Agent loop** is a minimal identity + recent-turns + user-message composer (`src/personal_llm/agent/loop.py`). No tools, no MCP, no skill library yet. smolagents lands in Phase 1.
-- **Skills** — directory layout exists in the vault skeleton, but no `SKILL.md` registry, no sandbox wiring, no example built-in skills.
-- **External learning** — no tutors, no web search, no audit log. Everything stays local.
-- **Lobes** — namespace directories exist (`<vault>/{skills,wiki,data/adapters}/imported/`), but no `export`/`import`/`inspect` commands.
+**Phase 1 has begun on `phase1/skills-registry`** (not yet merged to main per the "no PR until customer-facing" rule). Landed so far:
+- **L5 skill library**: `SKILL.md` discovery + parser + 3-source namespace precedence (`vault > builtin > imported`); `personal-llm skills list`. See `src/personal_llm/skills/`.
+- **First invocable skill**: `read_vault_file` builtin with safety checks (vault escape, oversize, non-UTF-8). `src/personal_llm/builtin_skills/read_vault_file/`.
+- **L6 agent loop**: smolagents `CodeAgent` backed by Ollama via the OpenAI-compatible `/v1` endpoint. `vault_root` is curried into tools invisibly; `identity.md` passes through as `instructions`. `src/personal_llm/agent/{tools,smol}.py`.
+- **New CLI**: `personal-llm ask "..."` — single-shot agent invocation that can call skills. Chat REPL still uses the bare-model Phase 0 path; swapping it is the customer-facing chunk that gates the PR.
+- **Test infra**: 26 unit tests + 2 opt-in integration tests behind `--run-integration` (`tests/conftest.py`).
+
+**Still stubbed — land in subsequent chunks:**
+- **Chat REPL** still uses the Phase 0 `ChatAgent` (bare model, no tools). Swapping it to the smolagents agent is the next chunk — when it lands, the branch becomes PR-ready.
+- **Memory** still uses the JSONL log (`src/personal_llm/memory/simple.py`); Letta-as-library swap comes after the chat-REPL chunk.
+- **External learning** — no tutors, no web search, no MCP servers, no audit log. Everything stays local.
+- **Lobes** — namespace directories exist, but no `export`/`import`/`inspect` commands.
+- **User-authored Python in skills** — the registry deliberately does NOT load `tool.py` from vault skills (only from builtins), pending a sandbox story for user code. There's a test pinning this boundary; don't relax it without a deliberate design pass.
 
 Phase 1 plan is in [ARCHITECTURE.md §11](docs/ARCHITECTURE.md).
 
@@ -111,15 +118,16 @@ personal-llm/
 │       ├── vault.py         # vault discovery + scaffolding
 │       ├── identity.py      # identity.md loader
 │       ├── inference/       # L2
-│       ├── memory/          # L4 — Phase 0: simple.py JSONL stub
-│       ├── agent/           # L6 — Phase 0: minimal loop, smolagents lands P1
-│       ├── interface/       # L7 — Phase 0: CLI chat REPL
+│       ├── memory/          # L4 — Phase 0: simple.py JSONL stub. Letta swap pending.
+│       ├── skills/          # L5 — SKILL.md registry, namespace precedence (P1)
+│       ├── agent/           # L6 — loop.py (Phase 0 ChatAgent), smol.py + tools.py (P1 smolagents)
+│       ├── interface/       # L7 — CLI chat REPL (still uses Phase 0 ChatAgent)
 │       ├── sleep/           # sleep-time runner
-│       └── builtin_skills/  # empty Phase 0; SKILL.md skills land P1
+│       └── builtin_skills/  # Phase 1: read_vault_file/ with SKILL.md + tool.py
 ├── examples/
 │   ├── identities/          # three starter personas (mentor-mode)
 │   └── vault-skeleton/      # what `personal-llm init` copies to scaffold a vault
-└── tests/                   # empty Phase 0; first smoke test lands P1
+└── tests/                   # 26 unit + 2 integration (gated behind --run-integration)
 ```
 
 ## Common commands
@@ -131,13 +139,16 @@ export UV_PROJECT_ENVIRONMENT=~/.venvs/personal-llm
 uv sync                                  # install / refresh deps
 uv run personal-llm --help               # CLI help
 uv run personal-llm init                 # scaffold a vault
-uv run personal-llm chat                 # open chat REPL
+uv run personal-llm chat                 # open chat REPL (Phase 0 bare-model path, no tools)
+uv run personal-llm ask "..."            # Phase 1 agent: can call skills, single-shot
+uv run personal-llm skills list          # show discovered SKILL.md skills
 uv run personal-llm sleep                # run sleep-time once (writes growth log)
 uv run personal-llm status               # vault + inference health check
 
-# Run lints / format (when ruff/pytest land)
-uv run ruff check src/
-uv run pytest                            # currently no tests; lands Phase 1
+# Lint and test
+uv run ruff check src/ tests/
+uv run pytest                            # 26 unit tests, <100ms, no external deps
+uv run pytest --run-integration          # also runs the live-Ollama integration tests (slow)
 ```
 
 ## When you're proposing the next feature
