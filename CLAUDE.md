@@ -22,19 +22,20 @@ The vision: a local-first AI that starts small and grows in capability through a
 
 Phase 0 commands still work: `init`, `chat`, `sleep`, `ingest`, `status`, `version`.
 
-**Phase 1 has begun on `phase1/skills-registry`** (not yet merged to main per the "no PR until customer-facing" rule). Landed so far:
+**Phase 1 has begun on `phase1/skills-registry`** (PR-ready as of this chunk; not yet opened). Landed so far:
 - **L5 skill library**: `SKILL.md` discovery + parser + 3-source namespace precedence (`vault > builtin > imported`); `personal-llm skills list`. See `src/personal_llm/skills/`.
 - **First invocable skill**: `read_vault_file` builtin with safety checks (vault escape, oversize, non-UTF-8). `src/personal_llm/builtin_skills/read_vault_file/`.
 - **L6 agent loop**: smolagents `CodeAgent` backed by Ollama via the OpenAI-compatible `/v1` endpoint. `vault_root` is curried into tools invisibly; `identity.md` passes through as `instructions`. `src/personal_llm/agent/{tools,smol}.py`.
-- **New CLI**: `personal-llm ask "..."` — single-shot agent invocation that can call skills. Chat REPL still uses the bare-model Phase 0 path; swapping it is the customer-facing chunk that gates the PR.
-- **Test infra**: 26 unit tests + 2 opt-in integration tests behind `--run-integration` (`tests/conftest.py`).
+- **CLI**: `personal-llm ask "..."` (single-shot) and `personal-llm chat` (interactive) both route through the smolagents agent. Chat builds the agent once per session and calls `agent.run(msg, reset=False)` so smolagents' own ReAct trajectory carries in-session continuity; per-turn JSONL writes stay so sleep-time and the upcoming Letta swap see a full record. Phase 0 `ChatAgent` (`agent/loop.py`) is gone.
+- **Test infra**: 29 unit tests + 2 opt-in integration tests behind `--run-integration` (`tests/conftest.py`).
 
 **Still stubbed — land in subsequent chunks:**
-- **Chat REPL** still uses the Phase 0 `ChatAgent` (bare model, no tools). Swapping it to the smolagents agent is the next chunk — when it lands, the branch becomes PR-ready.
-- **Memory** still uses the JSONL log (`src/personal_llm/memory/simple.py`); Letta-as-library swap comes after the chat-REPL chunk.
+- **Cross-session memory** regressed when chat moved to smolagents — the Phase 0 `recent_turns` cross-file replay isn't ported. Letta swap is the right place to fix this; do not paper over with prompt-stuffing.
+- **Memory** still uses the JSONL log (`src/personal_llm/memory/simple.py`); Letta-as-library swap is next.
 - **External learning** — no tutors, no web search, no MCP servers, no audit log. Everything stays local.
 - **Lobes** — namespace directories exist, but no `export`/`import`/`inspect` commands.
 - **User-authored Python in skills** — the registry deliberately does NOT load `tool.py` from vault skills (only from builtins), pending a sandbox story for user code. There's a test pinning this boundary; don't relax it without a deliberate design pass.
+- **Runtime overrides** (`/private`, `/local`, `/no-search`, `/tutor=`) parse in the REPL but don't yet enforce — they wire up alongside the tutor router.
 
 Phase 1 plan is in [ARCHITECTURE.md §11](docs/ARCHITECTURE.md).
 
@@ -120,14 +121,14 @@ personal-llm/
 │       ├── inference/       # L2
 │       ├── memory/          # L4 — Phase 0: simple.py JSONL stub. Letta swap pending.
 │       ├── skills/          # L5 — SKILL.md registry, namespace precedence (P1)
-│       ├── agent/           # L6 — loop.py (Phase 0 ChatAgent), smol.py + tools.py (P1 smolagents)
-│       ├── interface/       # L7 — CLI chat REPL (still uses Phase 0 ChatAgent)
+│       ├── agent/           # L6 — smol.py (build_agent + ask + chat_turn) + tools.py (skill adapter)
+│       ├── interface/       # L7 — CLI chat REPL (routes through agent/smol.py)
 │       ├── sleep/           # sleep-time runner
 │       └── builtin_skills/  # Phase 1: read_vault_file/ with SKILL.md + tool.py
 ├── examples/
 │   ├── identities/          # three starter personas (mentor-mode)
 │   └── vault-skeleton/      # what `personal-llm init` copies to scaffold a vault
-└── tests/                   # 26 unit + 2 integration (gated behind --run-integration)
+└── tests/                   # 29 unit + 2 integration (gated behind --run-integration)
 ```
 
 ## Common commands
@@ -139,15 +140,15 @@ export UV_PROJECT_ENVIRONMENT=~/.venvs/personal-llm
 uv sync                                  # install / refresh deps
 uv run personal-llm --help               # CLI help
 uv run personal-llm init                 # scaffold a vault
-uv run personal-llm chat                 # open chat REPL (Phase 0 bare-model path, no tools)
-uv run personal-llm ask "..."            # Phase 1 agent: can call skills, single-shot
+uv run personal-llm chat                 # interactive REPL — smolagents agent + skill library
+uv run personal-llm ask "..."            # single-shot agent invocation (same agent as chat)
 uv run personal-llm skills list          # show discovered SKILL.md skills
 uv run personal-llm sleep                # run sleep-time once (writes growth log)
 uv run personal-llm status               # vault + inference health check
 
 # Lint and test
 uv run ruff check src/ tests/
-uv run pytest                            # 26 unit tests, <100ms, no external deps
+uv run pytest                            # 29 unit tests, <100ms, no external deps
 uv run pytest --run-integration          # also runs the live-Ollama integration tests (slow)
 ```
 

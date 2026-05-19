@@ -1,1 +1,1 @@
-"""L6 — Agent loop. Phase 0: minimal chat loop. smolagents + MCP land in Phase 1."""
+"""L6 — Agent loop. smolagents CodeAgent + skill library; MCP lands later in Phase 1."""

@@ -1,12 +1,8 @@
 """smolagents-backed agent (Phase 1).
 
-The Phase 0 `ChatAgent` (loop.py) is still the chat REPL's backend — it streams
-raw model output with identity + recent turns prepended, no tools. This module
-adds the tool-using path: a smolagents `CodeAgent` that discovers the skill
-library and can invoke any builtin skill with a `tool.py`.
-
-Single-shot only for now. Wiring it into the chat REPL is a separate, deliberate
-chunk — that's the customer-facing piece that gates the next PR.
+Backs both the single-shot `personal-llm ask` and the interactive `personal-llm
+chat` REPL. The agent discovers the skill library at construction time and
+exposes any builtin skill with a `tool.py` as a smolagents tool.
 """
 
 from __future__ import annotations
@@ -15,10 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from smolagents import CodeAgent, OpenAIServerModel
+from smolagents.monitoring import LogLevel
 
 from personal_llm.agent.tools import build_smolagents_tools
 from personal_llm.config import VaultConfig
 from personal_llm.identity import load as load_identity
+from personal_llm.memory import simple as memory
 from personal_llm.skills import discover
 
 DEFAULT_MAX_STEPS = 6
@@ -60,6 +58,7 @@ def build_agent(
         model=model,
         max_steps=max_steps,
         instructions=identity,
+        verbosity_level=LogLevel.OFF,
     )
     return agent
 
@@ -78,3 +77,22 @@ def ask(
         steps_taken=getattr(agent, "step_number", 0),
         tools_available=[t.name for t in agent.tools.values()] if hasattr(agent, "tools") else [],
     )
+
+
+def chat_turn(
+    agent: CodeAgent,
+    vault_path: Path,
+    session_id: str,
+    user_message: str,
+) -> str:
+    """Run one chat-REPL turn against an already-built agent.
+
+    Writes the user message and final answer to the session's JSONL log so the
+    sleep-time loop (and the future Letta swap) see a complete record. The
+    agent's own ReAct trajectory is preserved across turns by `reset=False`;
+    that's what gives the REPL in-session continuity without prompt-stuffing.
+    """
+    memory.append_turn(vault_path, session_id, "user", user_message)
+    answer = str(agent.run(user_message, reset=False))
+    memory.append_turn(vault_path, session_id, "assistant", answer)
+    return answer
