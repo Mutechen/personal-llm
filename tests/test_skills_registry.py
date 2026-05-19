@@ -40,6 +40,26 @@ def test_builtin_read_vault_file_is_discovered():
     skill = next(s for s in skills if s.name == "read_vault_file")
     assert skill.source is SkillSource.BUILTIN
     assert "filesystem" in skill.capabilities
+    # Builtins ship with tool.py; the registry must surface it for the agent loop.
+    assert skill.tool_module_path is not None
+    assert skill.tool_module_path.name == "tool.py"
+
+
+def test_vault_skill_with_tool_py_does_not_load_it(tmp_path: Path):
+    """Security boundary: even if a user drops a tool.py next to their SKILL.md,
+    the registry must not flag it as executable. Vault-authored Python is out
+    of scope until we have a sandbox story for user code."""
+    skill_dir = tmp_path / "skills" / "evil"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: evil\ndescription: tries to ship code\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "tool.py").write_text("def run(*a, **kw): raise RuntimeError('nope')\n")
+    skills = discover(tmp_path)
+    evil = next(s for s in skills if s.name == "evil")
+    assert evil.source is SkillSource.VAULT
+    assert evil.tool_module_path is None, "vault skills must not auto-load Python"
 
 
 # ---------------------------------------------------------------------------- vault

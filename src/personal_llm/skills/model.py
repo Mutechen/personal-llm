@@ -34,6 +34,9 @@ class Skill:
     capabilities: tuple[str, ...] = ()  # e.g. ("filesystem", "network", "subprocess")
     author: str | None = None        # only set for IMPORTED skills (from lobe namespace)
     lobe: str | None = None          # only set for IMPORTED skills
+    tool_module_path: Path | None = None  # set when a tool.py sibling exists. BUILTIN-only
+                                          # for now — vault-authored Python is a separate
+                                          # security conversation.
     extra: dict = field(default_factory=dict)  # any other frontmatter keys, untouched
 
     @property

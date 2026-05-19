@@ -26,6 +26,7 @@ import yaml
 from personal_llm.skills.model import Skill, SkillSource
 
 SKILL_FILENAME = "SKILL.md"
+TOOL_FILENAME = "tool.py"
 
 
 class SkillParseError(ValueError):
@@ -79,6 +80,16 @@ def parse_skill_md(path: Path, source: SkillSource) -> Skill:
         frontmatter.pop("capabilities", ()), path, "capabilities"
     )
 
+    # Python-backed skills: only honor tool.py for BUILTIN skills in this phase.
+    # Vault-authored Python is a separate security conversation (see ARCHITECTURE.md
+    # §4 L5 sandbox notes); skipping it here makes "install a lobe" inherently safe
+    # since IMPORTED skills can't smuggle in executable code via tool.py either.
+    tool_module_path: Path | None = None
+    if source is SkillSource.BUILTIN:
+        candidate = path.parent / TOOL_FILENAME
+        if candidate.is_file():
+            tool_module_path = candidate
+
     return Skill(
         name=name,
         description=description.strip(),
@@ -88,6 +99,7 @@ def parse_skill_md(path: Path, source: SkillSource) -> Skill:
         version=str(version) if version is not None else None,
         tags=tags,
         capabilities=capabilities,
+        tool_module_path=tool_module_path,
         extra=frontmatter,  # whatever else the user put in frontmatter, preserved verbatim
     )
 

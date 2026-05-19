@@ -7,6 +7,7 @@ Phase 0 commands:
     personal-llm ingest FILE    — copy a file into the vault's raw/ for later ingestion.
     personal-llm status         — health check + vault summary.
     personal-llm skills list    — show discovered SKILL.md skills (vault + builtin + imported).
+    personal-llm ask PROMPT     — one-shot agent invocation; can call skills.
     personal-llm version        — print version.
 
 Phase 1+ adds: mcp (add/list/remove), audit (--since), export/import/inspect.
@@ -272,6 +273,47 @@ def status(
             table.add_row("inference", f"[red]{e}[/red]")
 
     console.print(table)
+
+
+# --------------------------------------------------------------------------- ask
+
+
+@app.command()
+def ask(
+    prompt: Annotated[str, typer.Argument(help="The question or task for the agent.")],
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+    max_steps: Annotated[
+        int,
+        typer.Option("--max-steps", help="Cap on agent reasoning steps."),
+    ] = 6,
+) -> None:
+    """Single-shot agent invocation. The agent can call any discovered skill.
+
+    Separate from `chat` for now — `chat` still runs the simple Phase 0 streaming
+    loop without tools. Once the agent path is trusted, the two will merge.
+    """
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(
+            f"[red]No vault at {vault_path}.[/red] Run [bold]personal-llm init[/bold] first."
+        )
+        raise typer.Exit(1)
+
+    cfg = config_mod.load(vault_path)
+
+    from personal_llm.agent.smol import ask as run_ask
+
+    result = run_ask(vault_path, cfg, prompt, max_steps=max_steps)
+    console.rule("[bold]answer[/bold]")
+    console.print(result.answer)
+    console.print()
+    console.print(
+        f"[dim]steps: {result.steps_taken}  ·  tools: "
+        f"{', '.join(result.tools_available) or '(none)'}[/dim]"
+    )
 
 
 # --------------------------------------------------------------------------- skills
