@@ -23,7 +23,7 @@ from rich.prompt import Prompt
 from personal_llm.agent.smol import build_agent, chat_turn
 from personal_llm.config import VaultConfig
 from personal_llm.inference.local import LocalModelClient
-from personal_llm.memory import simple as memory
+from personal_llm.memory import open_backend
 
 console = Console()
 
@@ -48,7 +48,8 @@ def run(vault_path: Path, config: VaultConfig) -> None:
         return
 
     agent = build_agent(vault_path, config)
-    session_id = memory.new_session_id()
+    backend = open_backend(vault_path)
+    session_id = backend.new_session_id()
     tool_names = [t.name for t in agent.tools.values()] if hasattr(agent, "tools") else []
 
     _print_banner(config, vault_path, tool_names)
@@ -83,7 +84,7 @@ def run(vault_path: Path, config: VaultConfig) -> None:
         console.print()
         try:
             with console.status("[dim]thinking…[/dim]", spinner="dots"):
-                answer = chat_turn(agent, vault_path, session_id, user_input)
+                answer = chat_turn(agent, backend, session_id, user_input)
         except KeyboardInterrupt:
             console.print("[dim](interrupted)[/dim]\n")
             continue

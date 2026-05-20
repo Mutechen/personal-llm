@@ -16,7 +16,7 @@ from smolagents.monitoring import LogLevel
 from personal_llm.agent.tools import build_smolagents_tools
 from personal_llm.config import VaultConfig
 from personal_llm.identity import load as load_identity
-from personal_llm.memory import simple as memory
+from personal_llm.memory import MemoryBackend
 from personal_llm.skills import discover
 
 DEFAULT_MAX_STEPS = 6
@@ -81,18 +81,18 @@ def ask(
 
 def chat_turn(
     agent: CodeAgent,
-    vault_path: Path,
+    backend: MemoryBackend,
     session_id: str,
     user_message: str,
 ) -> str:
     """Run one chat-REPL turn against an already-built agent.
 
-    Writes the user message and final answer to the session's JSONL log so the
-    sleep-time loop (and the future Letta swap) see a complete record. The
-    agent's own ReAct trajectory is preserved across turns by `reset=False`;
-    that's what gives the REPL in-session continuity without prompt-stuffing.
+    Writes the user message and final answer to the memory backend so the
+    sleep-time loop sees a complete record. The agent's own ReAct trajectory is
+    preserved across turns by `reset=False`; that's what gives the REPL
+    in-session continuity without prompt-stuffing.
     """
-    memory.append_turn(vault_path, session_id, "user", user_message)
+    backend.append_turn(session_id, "user", user_message)
     answer = str(agent.run(user_message, reset=False))
-    memory.append_turn(vault_path, session_id, "assistant", answer)
+    backend.append_turn(session_id, "assistant", answer)
     return answer
