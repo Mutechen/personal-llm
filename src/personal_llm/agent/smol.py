@@ -21,6 +21,9 @@ from personal_llm.skills import discover
 
 DEFAULT_MAX_STEPS = 6
 
+# How many prior-session turns to recall into a new chat session's context.
+RECALL_TURNS = 20
+
 
 @dataclass
 class AgentRunResult:
@@ -31,16 +34,38 @@ class AgentRunResult:
     tools_available: list[str]
 
 
+def format_recall_context(turns: list[dict[str, str]]) -> str:
+    """Render prior-session turns as a context block for the agent's instructions.
+
+    Returns an empty string when there are no turns, so callers can pass the
+    result straight through to `build_agent` without a guard.
+    """
+    if not turns:
+        return ""
+    body = "\n".join(f"{t['role']}: {t['content']}" for t in turns)
+    return (
+        "## Recent conversation history\n\n"
+        "Earlier exchanges with this user, for context. Continue the "
+        "relationship naturally; do not repeat these back verbatim.\n\n"
+        f"{body}"
+    )
+
+
 def build_agent(
     vault_path: Path,
     config: VaultConfig,
     max_steps: int = DEFAULT_MAX_STEPS,
+    memory_context: str | None = None,
 ) -> CodeAgent:
     """Construct a CodeAgent with the user's identity, model, and skill toolbelt.
 
     The identity.md is appended to smolagents' default system prompt so the
     model knows who it's helping. (Replacing the default prompt is more invasive
     and risks breaking the code-execution conventions smolagents relies on.)
+
+    `memory_context`, when provided, is appended to the instructions — this is
+    how the chat REPL gives the agent cross-session recall. `ask` leaves it
+    unset and stays stateless.
     """
     model = OpenAIServerModel(
         model_id=config.local_model.name,
@@ -52,12 +77,13 @@ def build_agent(
     tools = build_smolagents_tools(skills, vault_root=vault_path)
 
     identity = load_identity(vault_path)
+    instructions = f"{identity}\n\n{memory_context}" if memory_context else identity
 
     agent = CodeAgent(
         tools=tools,
         model=model,
         max_steps=max_steps,
-        instructions=identity,
+        instructions=instructions,
         verbosity_level=LogLevel.OFF,
     )
     return agent

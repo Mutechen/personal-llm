@@ -18,20 +18,26 @@ The vision: a local-first AI that starts small and grows in capability through a
 - **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** — onboarding for forkers, including Docker setup and the exFAT/non-Unix-filesystem troubleshooting.
 - **[README.md](README.md)** — short intro + quick start.
 
-## Current status — Phase 1 in progress (branch `phase1/skills-registry`)
+## Current status — Phase 1 in progress (branch `phase1/memory-sqlite`)
 
 Phase 0 commands still work: `init`, `chat`, `sleep`, `ingest`, `status`, `version`.
 
-**Phase 1 has begun on `phase1/skills-registry`** (PR-ready as of this chunk; not yet opened). Landed so far:
+**Merged to `main`** (PR #1 — the skills-registry chunk):
 - **L5 skill library**: `SKILL.md` discovery + parser + 3-source namespace precedence (`vault > builtin > imported`); `personal-llm skills list`. See `src/personal_llm/skills/`.
 - **First invocable skill**: `read_vault_file` builtin with safety checks (vault escape, oversize, non-UTF-8). `src/personal_llm/builtin_skills/read_vault_file/`.
 - **L6 agent loop**: smolagents `CodeAgent` backed by Ollama via the OpenAI-compatible `/v1` endpoint. `vault_root` is curried into tools invisibly; `identity.md` passes through as `instructions`. `src/personal_llm/agent/{tools,smol}.py`.
-- **CLI**: `personal-llm ask "..."` (single-shot) and `personal-llm chat` (interactive) both route through the smolagents agent. Chat builds the agent once per session and calls `agent.run(msg, reset=False)` so smolagents' own ReAct trajectory carries in-session continuity; per-turn JSONL writes stay so sleep-time and the upcoming Letta swap see a full record. Phase 0 `ChatAgent` (`agent/loop.py`) is gone.
-- **Test infra**: 29 unit tests + 2 opt-in integration tests behind `--run-integration` (`tests/conftest.py`).
+- **CLI**: `personal-llm ask "..."` (single-shot) and `personal-llm chat` (interactive) both route through the smolagents agent. Chat builds the agent once per session and calls `agent.run(msg, reset=False)` so the ReAct trajectory carries in-session continuity. Phase 0 `ChatAgent` is gone.
+
+**In progress on `phase1/memory-sqlite`** (the L4 memory swap):
+- **`MemoryBackend` protocol** (`src/personal_llm/memory/`) — the L4 swap seam; `open_backend()` is the single resolution point.
+- **`SqliteBackend`** — recall memory on stdlib `sqlite3`, one `turns` table per vault at `data/memory.db`, no new dependency. The Phase 0 JSONL stub is gone.
+- **Cross-session memory** — at chat startup, recent turns are recalled from the backend and folded into the agent's `instructions`. The regression from the chat-REPL swap is closed.
+- **Letta dropped** — an L-0 spike found Letta is a server product (~70 deps incl. Temporal/ClickHouse/gRPC), not a library. This supersedes the "Letta-as-library" locked choice; L4 is now an own-built sqlite store.
+- **Test infra**: 39 unit tests + 2 opt-in integration tests behind `--run-integration` (`tests/conftest.py`).
 
 **Still stubbed — land in subsequent chunks:**
-- **Cross-session memory** regressed when chat moved to smolagents — the Phase 0 `recent_turns` cross-file replay isn't ported. Letta swap is the right place to fix this; do not paper over with prompt-stuffing.
-- **Memory** still uses the JSONL log (`src/personal_llm/memory/simple.py`); Letta-as-library swap is next.
+- **Archival / semantic memory** — recall-only for now; `sqlite-vss` + a local embedding model is a later chunk.
+- **JSONL migration** — old `data/interactions/*.jsonl` history isn't imported into sqlite; an optional `memory migrate` command is deferred.
 - **External learning** — no tutors, no web search, no MCP servers, no audit log. Everything stays local.
 - **Lobes** — namespace directories exist, but no `export`/`import`/`inspect` commands.
 - **User-authored Python in skills** — the registry deliberately does NOT load `tool.py` from vault skills (only from builtins), pending a sandbox story for user code. There's a test pinning this boundary; don't relax it without a deliberate design pass.
@@ -45,7 +51,7 @@ Phase 1 plan is in [ARCHITECTURE.md §11](docs/ARCHITECTURE.md).
 L7  Identity & Interface       identity.md · CLI · web (P1+) · voice (P2+)
 L6  Agent loop & orchestrator  smolagents + MCP client (P1+)
 L5  Skill library              SKILL.md (Anthropic Agent Skills standard)
-L4  Memory & knowledge base    Letta (P1+) · Karpathy Wiki in Obsidian
+L4  Memory & knowledge base    sqlite recall store · Karpathy Wiki in Obsidian
 L3  Personalization layer      LoRA stack · DPO · KL-clamped (P2+)
 L2  Inference runtime          Ollama (local) · cloud tutor router (P1+)
 L1  Base model ("genes")       Qwen 3 8B local · Hermes 36B cloud
@@ -119,7 +125,7 @@ personal-llm/
 │       ├── vault.py         # vault discovery + scaffolding
 │       ├── identity.py      # identity.md loader
 │       ├── inference/       # L2
-│       ├── memory/          # L4 — Phase 0: simple.py JSONL stub. Letta swap pending.
+│       ├── memory/          # L4 — MemoryBackend protocol + SqliteBackend recall store
 │       ├── skills/          # L5 — SKILL.md registry, namespace precedence (P1)
 │       ├── agent/           # L6 — smol.py (build_agent + ask + chat_turn) + tools.py (skill adapter)
 │       ├── interface/       # L7 — CLI chat REPL (routes through agent/smol.py)

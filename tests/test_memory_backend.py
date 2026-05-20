@@ -1,7 +1,7 @@
 """Tests for the MemoryBackend protocol and its implementations.
 
-The behavioral tests are parametrized over every backend — that's what proves
-JsonlBackend and SqliteBackend are interchangeable behind the protocol.
+The behavioral tests are parametrized over every backend — the parametrization
+is the seam that keeps the protocol honest as more backends are added.
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from personal_llm.memory import JsonlBackend, MemoryBackend, SqliteBackend, open_backend
+from personal_llm.memory import MemoryBackend, SqliteBackend, open_backend
 
-_BACKENDS = [JsonlBackend, SqliteBackend]
+_BACKENDS = [SqliteBackend]
 
 
 @pytest.fixture(params=_BACKENDS, ids=lambda c: c.__name__)

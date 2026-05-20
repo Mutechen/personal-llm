@@ -19,11 +19,11 @@ The `personal-llm` package reads from this vault at runtime; it never writes to 
 | `wiki/imported/<author>/<lobe>/` | Knowledge imported from `.lobe` files (Phase 1+) |
 | `skills/<name>/` | Your skill library (each skill is an `SKILL.md` folder) |
 | `skills/imported/<author>/<lobe>/` | Skills from imported lobes |
-| `data/letta/` | Letta state (Phase 1+); Phase 0 unused |
+| `data/memory.db` | SQLite recall-memory store (created on first chat) |
 | `data/qdrant/` | Vector store (Phase 2+) |
 | `data/adapters/` | LoRA adapters |
 | `data/adapters/imported/` | Adapter lobes from others (opt-in to load) |
-| `data/interactions/` | Per-session chat JSONL logs (Phase 0 recall memory) |
+| `data/interactions/` | Legacy per-session chat JSONL logs (pre-sqlite; optional to migrate) |
 | `data/audit/` | Per-day audit logs of external calls (Phase 1+) |
 | `data/tutor_logs/` | Cached tutor payloads, for distillation |
 | `data/snapshots/` | Rollback snapshots |

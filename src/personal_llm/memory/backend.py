@@ -1,8 +1,8 @@
 """The `MemoryBackend` protocol — the swap seam for L4 memory.
 
 Exactly one production implementation lives behind this at a time (currently
-`JsonlBackend`; `SqliteBackend` replaces it). The protocol is the contract that
-keeps the memory layer pluggable without the project carrying two backends.
+`SqliteBackend`). The protocol is the contract that keeps the memory layer
+pluggable without the project carrying two backends.
 """
 
 from __future__ import annotations
