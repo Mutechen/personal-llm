@@ -1,25 +1,36 @@
-"""Tests for the MemoryBackend protocol and the JsonlBackend implementation."""
+"""Tests for the MemoryBackend protocol and its implementations.
+
+The behavioral tests are parametrized over every backend — that's what proves
+JsonlBackend and SqliteBackend are interchangeable behind the protocol.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from personal_llm.memory import JsonlBackend, MemoryBackend, open_backend
+import pytest
+
+from personal_llm.memory import JsonlBackend, MemoryBackend, SqliteBackend, open_backend
+
+_BACKENDS = [JsonlBackend, SqliteBackend]
 
 
-def test_jsonl_backend_satisfies_protocol(tmp_path: Path):
-    """JsonlBackend must structurally conform to MemoryBackend."""
-    assert isinstance(JsonlBackend(tmp_path), MemoryBackend)
+@pytest.fixture(params=_BACKENDS, ids=lambda c: c.__name__)
+def backend(request, tmp_path: Path) -> MemoryBackend:
+    return request.param(tmp_path)
+
+
+@pytest.mark.parametrize("backend_cls", _BACKENDS, ids=lambda c: c.__name__)
+def test_backend_satisfies_protocol(backend_cls, tmp_path: Path):
+    assert isinstance(backend_cls(tmp_path), MemoryBackend)
 
 
 def test_open_backend_returns_a_memory_backend(tmp_path: Path):
     assert isinstance(open_backend(tmp_path), MemoryBackend)
 
 
-def test_append_and_recent_turns_roundtrip(tmp_path: Path):
-    backend = JsonlBackend(tmp_path)
+def test_append_and_recent_turns_roundtrip(backend: MemoryBackend):
     session_id = backend.new_session_id()
-
     backend.append_turn(session_id, "user", "hello")
     backend.append_turn(session_id, "assistant", "hi there")
 
@@ -30,12 +41,11 @@ def test_append_and_recent_turns_roundtrip(tmp_path: Path):
     ]
 
 
-def test_recent_turns_empty_vault(tmp_path: Path):
-    assert JsonlBackend(tmp_path).recent_turns() == []
+def test_recent_turns_empty_vault(backend: MemoryBackend):
+    assert backend.recent_turns() == []
 
 
-def test_recent_turns_respects_limit(tmp_path: Path):
-    backend = JsonlBackend(tmp_path)
+def test_recent_turns_respects_limit(backend: MemoryBackend):
     session_id = backend.new_session_id()
     for i in range(10):
         backend.append_turn(session_id, "user", f"msg {i}")
@@ -44,17 +54,25 @@ def test_recent_turns_respects_limit(tmp_path: Path):
     assert [t["content"] for t in turns] == ["msg 7", "msg 8", "msg 9"]
 
 
-def test_new_session_id_is_unique(tmp_path: Path):
-    backend = JsonlBackend(tmp_path)
+def test_new_session_id_is_unique(backend: MemoryBackend):
     ids = {backend.new_session_id() for _ in range(50)}
     assert len(ids) == 50
 
 
-def test_turn_counts_for_today(tmp_path: Path):
-    backend = JsonlBackend(tmp_path)
+def test_turn_counts_for_today(backend: MemoryBackend):
     session_id = backend.new_session_id()
     backend.append_turn(session_id, "user", "a")
     backend.append_turn(session_id, "assistant", "b")
 
-    counts = backend.turn_counts_for_today()
-    assert counts == {"sessions": 1, "turns": 2}
+    assert backend.turn_counts_for_today() == {"sessions": 1, "turns": 2}
+
+
+@pytest.mark.parametrize("backend_cls", _BACKENDS, ids=lambda c: c.__name__)
+def test_backend_persists_across_instances(backend_cls, tmp_path: Path):
+    """A fresh backend over the same vault sees turns written by an earlier one."""
+    first = backend_cls(tmp_path)
+    session_id = first.new_session_id()
+    first.append_turn(session_id, "user", "remember me")
+
+    second = backend_cls(tmp_path)
+    assert second.recent_turns()[-1]["content"] == "remember me"
