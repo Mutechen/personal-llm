@@ -34,7 +34,6 @@ REQUIRED_DIRS = (
     "skills",
     "skills/imported",
     "data",
-    "data/letta",
     "data/qdrant",
     "data/adapters",
     "data/adapters/imported",

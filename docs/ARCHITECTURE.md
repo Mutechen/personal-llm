@@ -52,7 +52,7 @@ These are the rules the system is judged against.
 ├──────────────────────────────────────────────────────────────────┤
 │ L5  Skill library              versioned · self-curated · tested│
 ├──────────────────────────────────────────────────────────────────┤
-│ L4  Memory & knowledge base    Letta state · Karpathy Wiki · KG │
+│ L4  Memory & knowledge base    sqlite recall · Karpathy Wiki · KG│
 ├──────────────────────────────────────────────────────────────────┤
 │ L3  Personalization layer      LoRA stack · DPO · KL-clamped    │
 ├──────────────────────────────────────────────────────────────────┤
@@ -164,14 +164,16 @@ Each adapter is trained with **Unsloth** on a rented A100 (the local 6 GB GPU ca
 
 ### L4 — Memory & knowledge base
 
-Two-tier system: *hot, structured agent state* (Letta) and *cold, durable human knowledge* (Karpathy LLM Wiki).
+Two-tier system: *hot, structured agent state* (an own-built SQLite recall store) and *cold, durable human knowledge* (Karpathy LLM Wiki).
 
-**Hot tier: Letta-as-library.**
-- **Core memory blocks** (always in context): persona (read from `identity.md`), user profile, current projects, active goals.
-- **`hot.md` session cache** — `<vault>/data/letta/hot.md` holds ~500 words of current-session context (what the user just asked, current task, recent decisions). Loaded at the start of each turn, refreshed at session boundaries. Pattern borrowed from the `claude-obsidian` implementation of Karpathy's wiki, which reported ~71.5× token reduction vs. naive file-feeding.
-- **Recall memory**: recent conversations, vector-indexed. Most recent N turns always accessible; older recalled by similarity.
-- **Archival memory**: cold storage, vector-indexed. Promoted from recall when "important," demoted from recall when "stale."
-- **Self-edit tool calls**: the agent can `memory_replace`, `memory_insert`, `memory_search` — the agent is the one curating its own state. Aligns with Letta's 2026 direction (filesystem operations on git-backed context repos, their "MemFS").
+**Hot tier: a SQLite recall store behind a `MemoryBackend` protocol.**
+- **Conversation recall** — every chat turn is written to a per-vault SQLite database (`<vault>/data/memory.db`, one `turns` table). At session start the most recent turns are recalled and folded into the agent's instructions, so it continues where prior sessions left off.
+- **`MemoryBackend` protocol** — the L4 swap seam. Exactly one production implementation at a time (`SqliteBackend`); the protocol keeps the layer pluggable without the project maintaining parallel backends.
+- **Identity** — `identity.md` is loaded as the agent's persona each session. Only the user writes it; the agent never does.
+- **Archival / semantic memory** (later phase): `sqlite-vss` over a local embedding model, so older turns surface by meaning, not just recency. Deferred until recall-only proves insufficient.
+- **Self-curating memory** is something the project grows into — the sleep-time loop consolidates and summarises history into the store. Built incrementally, not bought off-the-shelf.
+
+(Letta was the original choice for this tier. An L-0 spike found current Letta is a hosted-server product — ~70 dependencies including Temporal, ClickHouse, and gRPC — not an embeddable library, so it was dropped. See [PRIOR_ART.md](PRIOR_ART.md).)
 
 **Cold tier: Karpathy LLM Wiki pattern, in an Obsidian vault.**
 - `raw/` — original source material: PDFs, EPUBs, web articles, transcripts, the user's own notes. Never modified by the agent; the source of truth.
@@ -185,7 +187,7 @@ Two-tier system: *hot, structured agent state* (Letta) and *cold, durable human 
 
 **Knowledge graph layer: deferred to Phase 3+.** Once `wiki/` exceeds ~1000 pages, evaluate LightRAG or GraphRAG for higher-order reasoning across the corpus.
 
-**Why both Letta and wiki?** Letta is fast structured state with self-modification — perfect for "what is the user doing right now." The wiki is durable, human-readable, and supports the human's own thinking — perfect for "what does the user know / care about long-term." Each does one thing well.
+**Why both a recall store and a wiki?** The recall store is fast, structured conversational state — perfect for "what is the user doing right now." The wiki is durable, human-readable, and supports the human's own thinking — perfect for "what does the user know / care about long-term." Each does one thing well.
 
 **Imported knowledge** (from lobes — see §6) lives under `wiki/imported/<author>/<lobe>/`, never collides with the user's own pages, and is *flagged at citation time* by the agent so the user always knows which knowledge is theirs and which is borrowed.
 
@@ -264,7 +266,7 @@ This collapses a huge amount of "tool plumbing" we'd otherwise write. Phase 1's 
 
 ## 5. The sleep-time loop (the growth engine)
 
-The most important architectural component for this project's vision, based on Letta + Berkeley's "Sleep-time Compute" paper (arXiv 2504.13171, April 2025), which showed 5× reduction in test-time compute and +13–18% accuracy on stateful reasoning tasks when agents pre-think during idle.
+The most important architectural component for this project's vision, based on the "Sleep-time Compute" paper (Letta / Berkeley, arXiv 2504.13171, April 2025), which showed 5× reduction in test-time compute and +13–18% accuracy on stateful reasoning tasks when agents pre-think during idle.
 
 **Trigger:** either (a) cron at 03:00 daily, or (b) idle detector (no activity for 30+ min) fires once per day.
 
@@ -307,7 +309,7 @@ The privacy boundary, in artifacts:
 - `identity.md` — personal by construction. (Example identity *templates* are different and ship in the seed.)
 - Preference DPO LoRAs — trained on user interaction history; real risk of leaking what the user typed (membership-inference attacks on small LoRAs are an active research area).
 - `raw/` — the user's source material. Period.
-- `data/` — runtime state (Letta DB, vector store, snapshots). Personal by content even if structurally generic.
+- `data/` — runtime state (recall-memory DB, vector store, snapshots). Personal by content even if structurally generic.
 
 The boundary is enforced at the artifact's birth, not by trust. Every LoRA training job tags its output `shareable: true` (trained only on external/public corpora) or `shareable: false` (touched user-derived data at any point). **Locked default rule (conservative):** any byte of user-derived data → `shareable: false`. A literature review on membership-inference attacks may relax this later, but the default stays restrictive. The export command refuses `shareable: false` artifacts; the bundling command refuses to include anything from `raw/` or `data/`.
 
@@ -512,7 +514,7 @@ Recorded as a hard constraint so future architectural changes don't drift past w
 | Resource | Current | Headroom for the agent |
 |---|---|---|
 | CPU | Intel i7-11800H, 8c/16t | Adequate; sleep-time loop CPU-bound work is fine. |
-| RAM | 31 GB total, ~10 GB free in normal use | Tight. Qwen 8B Q4 (~6 GB) + Qdrant (~500 MB) + Python (~1 GB) + Letta (~500 MB) leaves ~2 GB margin. Close other apps when active. |
+| RAM | 31 GB total, ~10 GB free in normal use | Tight. Qwen 8B Q4 (~6 GB) + Qdrant (~500 MB) + Python (~1 GB) leaves ~2.5 GB margin. Close other apps when active. |
 | GPU | RTX 3060 Mobile, 6 GB VRAM | **Binding.** Caps local base at 8B Q4. No local training. |
 | Disk | 174 GB free of 1.9 TB | OK to start; needs model-cache eviction policy. |
 | Network | typical home WiFi | Cloud escalation latency ~1–2s — acceptable for "hard query" path, not chat path. |
@@ -615,17 +617,17 @@ Each phase ends with something the user can use. Nothing here promises more than
 - `personal-llm init [path]` CLI command: hardware probe (RAM, disk, NVIDIA-via-nvidia-smi, Apple Silicon detection), model suggestion ladder, identity choice, PII-redaction wizard, vault scaffolding, `config.yaml` written.
 - Ollama installed (documented but not required by the package itself); Qwen 3 8B Instruct Q4_K_M pulled and verified at ≥25 tok/s for the user's own first instance.
 - Minimal CLI: `personal-llm chat` (streaming, identity loaded, cross-session recall), `personal-llm ingest <file>` (copies to `<vault>/raw/`, no parsing yet), `personal-llm sleep` (heartbeat growth log), `personal-llm status` (vault validation + live inference health).
-- **Recall memory: a JSONL stub** (`memory/simple.py`) — append per turn, replay last 20 turns across all sessions. Letta-as-library *is the target* (§4 L4) but deliberately deferred to Phase 1 so Phase 0 stays a thin, reviewable foundation. The interface is small enough that the Phase 1 swap is one module's worth of code.
+- **Recall memory: a JSONL stub** — append per turn, replay last 20 turns across all sessions. Deliberately thin so Phase 0 stays a reviewable foundation; Phase 1 swaps it for the protocol-backed sqlite store (§4 L4).
 - Sleep-time loop scaffold: `personal-llm sleep` writes a `<vault>/growth/YYYY-MM-DD.md` with today's session/turn counts. *Even at zero capability* the growth log appears — the contract that real work in Phase 1 will fill out.
 - Docker scaffolding (§9): `docker/sandbox/Dockerfile` builds the skill-sandbox base image (used Phase 1+); `docker-compose.yml` at repo root with Phase 1+ services as commented placeholders.
 - Lobe-readiness (no commands yet, just structure): vault skeleton includes empty `skills/imported/`, `wiki/imported/`, `data/adapters/imported/` directories so the namespace exists from day 1.
-- **Deferred to Phase 1:** Letta-as-library wiring; smolagents agent loop; MCP client; SKILL.md skill registry with namespace precedence; smoke test in `tests/` (we don't yet know the right shape — first test lands with the first real feature in Phase 1).
+- **Deferred to Phase 1:** the L4 memory swap (protocol + sqlite recall store); smolagents agent loop; MCP client; SKILL.md skill registry with namespace precedence; smoke test in `tests/` (we don't yet know the right shape — first test lands with the first real feature in Phase 1).
 - Exit criteria: (a) the user can have a conversation across multiple sessions; the agent remembers the prior session; growth log files appear daily. (b) A stranger cloning the repo can run the wizard and reach their own first chat in under 5 minutes.
 
 ### Phase 1 — "Toddler" (target: weeks 2–3)
 **Goal:** the agent can read what the user gives it, organize what it knows, and reach out to the world.
 
-- **Letta-as-library wired in**, replacing the Phase 0 JSONL stub. Core memory (loads `<vault>/identity.md` + hot.md cache), recall memory, archival memory, self-edit tool calls — all persisted in `<vault>/data/letta/`.
+- **L4 memory swap** — the Phase 0 JSONL stub is replaced by a `MemoryBackend` protocol with a `SqliteBackend` recall store at `<vault>/data/memory.db`. Cross-session recall folds recent turns into the agent's instructions at session start. Semantic/archival search (`sqlite-vss`) is a later chunk.
 - **smolagents agent loop** (§4 L6) replacing the Phase 0 minimal chat loop. Code-first agent reasoning. Confidence-gated clarifying-questions behavior wired in.
 - **MCP client** (§4 L6) wired in: `personal-llm mcp add/list/remove`. First server: SearXNG (Docker sidecar) for the `web_search` capability.
 - Karpathy LLM Wiki pattern: `raw/` + `wiki/` directories, Obsidian-compatible.
@@ -694,9 +696,10 @@ personal-llm/
 │       │   ├── local.py       # Ollama wrapper
 │       │   └── tutor.py       # cloud-tutor abstraction
 │       ├── memory/            # L4 framework code
-│       │   ├── letta_state.py
+│       │   ├── backend.py     # MemoryBackend protocol
+│       │   ├── sqlite.py      # SqliteBackend recall store
 │       │   ├── wiki.py
-│       │   └── vector.py      # Qdrant wrapper
+│       │   └── vector.py      # sqlite-vss / Qdrant wrapper
 │       ├── skills/            # L5 framework code (not the skills themselves)
 │       │   ├── registry.py    # merges builtin_skills + <vault>/skills at runtime
 │       │   ├── sandbox.py
@@ -769,7 +772,7 @@ This is *the user's* personal LLM. By default at `~/.personal-llm/vault/`, but `
 │       └── <author>/<lobe-name>/
 ├── data/                      # runtime state — never edited by hand
 │   ├── qdrant/                # vector store on disk
-│   ├── letta/                 # agent state DB
+│   ├── memory.db              # recall-memory store (SQLite)
 │   ├── adapters/              # downloaded LoRA adapters (user's own)
 │   │   └── imported/          # adapter lobes from others (§6); opt-in to load
 │   │       └── <author>/<lobe-name>/
@@ -796,7 +799,7 @@ At every invocation:
 2. `vault.py` validates the vault has the expected structure (init wizard runs if not).
 3. `config.py` loads `<vault>/config.yaml`.
 4. Skill registry merges `personal_llm.builtin_skills.*` (from the package) with `<vault>/skills/*` (from the vault). Vault skills override builtin skills on name conflict.
-5. Letta state, Qdrant, adapters, wiki — all read from / written to the vault.
+5. Recall-memory DB, Qdrant, adapters, wiki — all read from / written to the vault.
 
 The package is stateless across invocations. Everything stateful lives in the vault. This is the contract that keeps the seed/instance separation clean.
 
@@ -868,7 +871,7 @@ Locked decisions live in their own sections (§6 for lobes, §7 for external lea
 
 The architecture leans on this body of work; full pointers in [memory:key-references].
 
-- **Memory:** Letta (formerly MemGPT) and Letta's "Sleep-time Compute" paper (arXiv 2504.13171). Karpathy's "LLM Wiki" gist (April 2026).
+- **Memory:** MemGPT / Letta — the memory-tier concept (core / recall / archival); evaluated and not adopted as a dependency (see [PRIOR_ART.md](PRIOR_ART.md)). The "Sleep-time Compute" paper (arXiv 2504.13171). Karpathy's "LLM Wiki" gist (April 2026).
 - **Self-improving agents:** Voyager (arXiv 2305.16291). AutoSkill (arXiv 2603.01145). SAGE (arXiv 2512.17102). The Awesome-Self-Evolving-Agents survey (EvoAgentX). Lifelong LLM agents survey (TPAMI 2026).
 - **Continual learning:** "Mechanistic Analysis of Catastrophic Forgetting" (arXiv 2601.18699). FedPDPO (arXiv 2603.19741).
 - **Base models:** Hermes 4 Technical Report (arXiv 2508.18255). Qwen 3 release notes.

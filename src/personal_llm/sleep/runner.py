@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from personal_llm.memory.simple import turn_counts_for_today
+from personal_llm.memory import open_backend
 
 
 def run_once(vault_path: Path) -> Path:
@@ -19,7 +19,7 @@ def run_once(vault_path: Path) -> Path:
     growth_path = vault_path / "growth" / f"{today}.md"
     growth_path.parent.mkdir(parents=True, exist_ok=True)
 
-    counts = turn_counts_for_today(vault_path)
+    counts = open_backend(vault_path).turn_counts_for_today()
     body = _render(today, counts)
     growth_path.write_text(body, encoding="utf-8")
     return growth_path
