@@ -162,11 +162,10 @@ Read the architecture doc ([docs/ARCHITECTURE.md](ARCHITECTURE.md)) for the full
 
 **Still missing (next chunks):**
 
-- **Agent in the chat REPL.** `personal-llm chat` is still the bare-model loop. The next chunk wires the agent in so chat can call skills mid-conversation. (After that lands, the branch becomes PR-ready.)
 - **More skills than just `read_vault_file`.** Listing dir contents, writing wiki pages, searching the web (via MCP) — all upcoming.
 - **MCP client.** The agent can't yet talk to MCP servers (Phase 1+).
 - **Wiki population from `raw/`.** `personal-llm ingest <file>` still just copies files into `raw/`; parsing + wiki updates land later in Phase 1.
-- **Memory upgrade.** Still the Phase 0 JSONL log. Letta-as-library swap comes after the chat REPL chunk.
+- **Semantic / archival memory.** Cross-session recall works; meaning-based search over older history (via `sqlite-vss` + a local embedding model) is a later chunk.
 - **Tutors / cloud escalation.** Everything stays local. (Phase 1+.)
 - **Fine-tuning.** No LoRAs trained yet. (Phase 2+.)
 - **Lobes export/import.** Namespace directories exist, no commands yet. (Phase 1+.)
@@ -204,7 +203,7 @@ uv run personal-llm --help
 
 **Other things to keep on a Unix filesystem, not the external drive:**
 
-- **Your vault** (default: `~/.personal-llm/vault/`). The vault uses SQLite (Letta in Phase 1+) and benefits from real Unix file locking and permissions. Keeping the default location avoids exFAT pain.
+- **Your vault** (default: `~/.personal-llm/vault/`). The vault stores recall memory in SQLite and benefits from real Unix file locking and permissions. Keeping the default location avoids exFAT pain.
 - **Ollama models** (default: `~/.ollama/models/`). Already on your home filesystem; no action needed.
 
 **What's fine on exFAT/NTFS:**
@@ -216,7 +215,7 @@ uv run personal-llm --help
 **What breaks on exFAT/NTFS:**
 
 - Python venvs (symlink to interpreter, executable file mode bits).
-- SQLite write performance and locking (Letta will be slower and may error under concurrent access).
+- SQLite write performance and locking (the recall-memory DB will be slower and may error under concurrent access).
 - Anything that needs `chmod +x` or `ln -s`.
 - Docker bind mounts may have permission issues (everything appears as the uid/gid set in the mount options).
 

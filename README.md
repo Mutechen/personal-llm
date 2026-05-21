@@ -50,7 +50,7 @@ Hold those three axes in your head and you can predict where any new feature sho
 L7  Identity & Interface       CLI · web (P2+) · voice (P3+) · identity.md
 L6  Agent loop & orchestrator  smolagents + MCP client (P1+)
 L5  Skill library              Agent Skills (SKILL.md) standard
-L4  Memory & knowledge base    Letta (P1+) · Karpathy-style markdown Wiki
+L4  Memory & knowledge base    sqlite recall store · Karpathy-style markdown Wiki
 L3  Personalization layer      LoRA stack · DPO · KL-clamped (P2+)
 L2  Inference runtime          Ollama (local) · cloud tutor router (P1+)
 L1  Base model ("genes")       Qwen 3 8B local · Hermes 36B (cloud)
@@ -71,7 +71,7 @@ What the agent can *do*. Each skill is a directory with a **`SKILL.md`** manifes
 
 ### L4 — Memory & knowledge base
 Two formats:
-- **Memory** (events, episodes, facts) — **Letta-as-library** in Phase 1+. Currently a JSONL stub at `src/personal_llm/memory/simple.py`.
+- **Memory** (events, episodes, facts) — a **SQLite recall store** behind a swappable `MemoryBackend` protocol (`src/personal_llm/memory/`). Recent turns are recalled into the agent at session start; semantic/archival search via `sqlite-vss` is a later phase.
 - **Knowledge** (durable, hand-editable) — a **Karpathy-style markdown wiki** in `vault/wiki/`. Plain markdown so Obsidian/Logseq/etc. just work. The agent writes daily/topic/project notes during sleep-time; you edit them by hand any time.
 
 Vector store stays file-based (markdown grep + sqlite-vss) until >10k chunks. Qdrant only after.
@@ -157,7 +157,7 @@ Key terms used above, with pointers for going deeper.
 
 **Agent Skills (`SKILL.md`)** — Open standard from Anthropic for packaging a skill as a directory: a markdown manifest naming the skill, when to use it, what tools it exposes, optional `tool.py` for Python.
 
-**Curated memory / Letta** — An agent-memory framework with explicit tiers (core / recall / archival) and self-edit tool calls so the model curates what it remembers. Our L4 plan is "Letta as a library," not the full Letta server.
+**Curated memory (MemGPT / Letta concept)** — The agent-memory idea of explicit tiers (core / recall / archival) with the model curating what it remembers. We adopt the *concept*; L4 itself is an own-built SQLite recall store — Letta the library turned out to be server-only (see [docs/PRIOR_ART.md](docs/PRIOR_ART.md)).
 
 **DPO (Direct Preference Optimization)** — Training objective that adjusts a model toward preferred over rejected responses without RLHF's reward-model machinery. We use it during sleep-time on preference signals.
 
@@ -190,10 +190,10 @@ Key terms used above, with pointers for going deeper.
 ## Further reading & watching
 
 ### Memory architecture (L4)
-- **Letta** — docs: [docs.letta.com](https://docs.letta.com). Blog *"Sleep-time Compute"* (April 2025) — the principle we lean on most.
-- **Letta sleep-time compute paper** — [arXiv 2504.13171](https://arxiv.org/abs/2504.13171).
+- **MemGPT / Letta** — the memory-tier concept (core / recall / archival). docs: [docs.letta.com](https://docs.letta.com). The library itself is server-only and not a dependency — see [docs/PRIOR_ART.md](docs/PRIOR_ART.md).
+- **"Sleep-time Compute" paper** — [arXiv 2504.13171](https://arxiv.org/abs/2504.13171) — the principle the sleep-time loop leans on most.
 - **Karpathy LLM Wiki gist** — [gist.github.com/karpathy/442a6bf555914893e9891c11519de94f](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — the markdown-first knowledge-base pattern.
-- **mem0** — simpler memory-layer SDK; an alternative if Letta ever feels too heavy.
+- **mem0** — an embeddable memory-layer SDK; one of the alternatives considered. L4 ultimately uses an own-built SQLite store to stay dependency-light.
 - *Watch:* [Sleep-Time Compute — Letta AI (Packer / Snell / Lin)](https://www.youtube.com/watch?v=1UTo511O3-U) — the canonical talk on the exact pattern this project's sleep-time loop is built around. Also [MemGPT: Teaching LLMs memory management for unbounded context](https://www.youtube.com/watch?v=oFJJkFQjcW0) for the memory-tier story end-to-end. For the systems-view of memory around an LLM, [Andrej Karpathy's channel](https://www.youtube.com/@AndrejKarpathy/videos) — the "Intro to LLMs" and Software 3.0 talks are the right starting points.
 
 ### Self-evolving agents / skill library (L5)
