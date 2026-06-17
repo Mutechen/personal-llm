@@ -18,7 +18,7 @@ The vision: a local-first AI that starts small and grows in capability through a
 - **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** — onboarding for forkers, including Docker setup and the exFAT/non-Unix-filesystem troubleshooting.
 - **[README.md](README.md)** — short intro + quick start.
 
-## Current status — Phase 1 in progress (branch `phase1/memory-sqlite`)
+## Current status — Phase 1 in progress (PR #1 + PR #2 merged to `main`)
 
 Phase 0 commands still work: `init`, `chat`, `sleep`, `ingest`, `status`, `version`.
 
@@ -28,7 +28,7 @@ Phase 0 commands still work: `init`, `chat`, `sleep`, `ingest`, `status`, `versi
 - **L6 agent loop**: smolagents `CodeAgent` backed by Ollama via the OpenAI-compatible `/v1` endpoint. `vault_root` is curried into tools invisibly; `identity.md` passes through as `instructions`. `src/personal_llm/agent/{tools,smol}.py`.
 - **CLI**: `personal-llm ask "..."` (single-shot) and `personal-llm chat` (interactive) both route through the smolagents agent. Chat builds the agent once per session and calls `agent.run(msg, reset=False)` so the ReAct trajectory carries in-session continuity. Phase 0 `ChatAgent` is gone.
 
-**In progress on `phase1/memory-sqlite`** (the L4 memory swap):
+**Merged to `main`** (PR #2 — the L4 memory swap):
 - **`MemoryBackend` protocol** (`src/personal_llm/memory/`) — the L4 swap seam; `open_backend()` is the single resolution point.
 - **`SqliteBackend`** — recall memory on stdlib `sqlite3`, one `turns` table per vault at `data/memory.db`, no new dependency. The Phase 0 JSONL stub is gone.
 - **Cross-session memory** — at chat startup, recent turns are recalled from the backend and folded into the agent's `instructions`. The regression from the chat-REPL swap is closed.
