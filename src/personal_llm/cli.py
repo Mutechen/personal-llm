@@ -194,6 +194,58 @@ def sleep(
     console.print(f"[green]Wrote[/green] {growth_path}")
 
 
+# --------------------------------------------------------------------------- learn
+
+
+@app.command()
+def learn(
+    source: Annotated[
+        Path | None,
+        typer.Option("--source", help="Transcript dir (default ~/.claude/projects)."),
+    ] = None,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", help="Max new sessions to process this run."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Extract and count, but write nothing."),
+    ] = False,
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """Distill facts from your existing agent transcripts into recall memory.
+
+    Opt-in: reads Claude Code transcripts (your most sensitive data) only when
+    you run this, and distills with the local model so nothing leaves the
+    machine. Facts land in recall tagged `unverified`.
+    """
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(f"[red]No vault at {vault_path}.[/red]")
+        raise typer.Exit(1)
+
+    cfg = config_mod.load(vault_path)
+
+    from personal_llm.learning.runner import learn_from_transcripts
+
+    result = learn_from_transcripts(
+        vault_path, cfg, source=source, limit=limit, dry_run=dry_run
+    )
+
+    tag = " [dim](dry run — nothing written)[/dim]" if result.dry_run else ""
+    console.print(
+        f"[green]Learned[/green] from {result.sessions_processed} new "
+        f"session(s) of {result.sessions_seen} seen{tag}."
+    )
+    console.print(
+        f"  facts extracted: {result.facts_extracted} · "
+        f"newly stored: {result.facts_added}"
+    )
+
+
 # --------------------------------------------------------------------------- ingest
 
 

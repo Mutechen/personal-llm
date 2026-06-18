@@ -53,3 +53,6 @@ htmlcov/
 
 # Research PDFs — binary, fetchable; index tracked, papers not
 docs/research/*.pdf
+
+# Drive-local per-repo tracker — personal context, never in the public seed
+STATUS.md

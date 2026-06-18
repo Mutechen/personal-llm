@@ -36,3 +36,24 @@ class MemoryBackend(Protocol):
     def turn_counts_for_today(self) -> dict[str, int]:
         """Return `{'sessions': int, 'turns': int}` for turns logged today (UTC)."""
         ...
+
+    def append_fact(self, text: str, source: str, confidence: str = "unverified") -> bool:
+        """Persist a distilled fact about the user. Returns True if newly stored.
+
+        `confidence` is an epistemic tag; auto-distilled facts default to
+        `"unverified"` since they come from conversation and aren't checked.
+        It is the thin seam for the fuller fact-epistemics model (certainty /
+        volatility / provenance) deferred to ARCHITECTURE.md §4 L4.
+
+        Idempotent on `text`: re-inserting an identical fact is a no-op and
+        returns False, so distillation re-runs don't duplicate.
+        """
+        ...
+
+    def recent_facts(self, limit: int = 50) -> list[dict[str, str]]:
+        """Return the most recently stored facts, oldest first.
+
+        Each fact is a dict with `text`, `source`, `confidence`, and
+        `created_at` keys.
+        """
+        ...

@@ -175,6 +175,16 @@ Two-tier system: *hot, structured agent state* (an own-built SQLite recall store
 
 (Letta was the original choice for this tier. An L-0 spike found current Letta is a hosted-server product — ~70 dependencies including Temporal, ClickHouse, and gRPC — not an embeddable library, so it was dropped. See [PRIOR_ART.md](PRIOR_ART.md).)
 
+**Fact epistemics — not all facts are equal (design to grow into).** A memory store that treats "the user spoke with Y yesterday," "gravity accelerates at ~9.8 m/s²," "project X is at Phase 1," and an ayah-grounded ruling as the same kind of statement will rot. These differ along **three orthogonal axes** — conflating them into one score is the trap:
+
+1. **Certainty** — how likely true. Revelation-grounded (Qur'an / strong tafsir, with citation) and logged-with-proof events sit highest; scientific consensus high; conversational inference low/unverified.
+2. **Volatility** — half-life. An ayah is eternal; "project X is at Phase 1" is ephemeral; "spoke with Y yesterday" is certain-but-historical — it never becomes false, only ages in *relevance*. (Truth-stability and relevance-decay are themselves distinct; most facts need only one of the two.)
+3. **Provenance** — what justifies it and what citation it requires: `revelation` (ayah/tafsir — citation mandatory), `observed` (event + proof ref), `scientific`, `conversational`, `inferred`.
+
+Given Mutechen's Shariah-compliant remit and the Islamic Encyclopedia focus, **theological provenance with mandatory citation is a first-class category here**, not a generic afterthought. The sleep-time consolidation pass (§5 step 3) is where facts get *graded* and *re-graded* — promoted, demoted, expired, or flagged for verification — using these axes, replacing the single "importance/staleness" scalar.
+
+**What's built now vs. deferred.** The `facts` table carries a single `confidence` column (default `unverified`) and a `source` string (provenance, e.g. `transcript:<id>` or `quran:2:255`). Auto-distilled facts from transcripts are deterministically tagged `unverified` — accurate, no model guessing. The full three-axis model (volatility column, certainty taxonomy, citation enforcement, decay) is deferred to the consolidation pass; SQLite `ADD COLUMN` is non-breaking, so there's no migration penalty for growing into it. The `confidence` column is the thin seam reserving that future.
+
 **Cold tier: Karpathy LLM Wiki pattern, in an Obsidian vault.**
 - `raw/` — original source material: PDFs, EPUBs, web articles, transcripts, the user's own notes. Never modified by the agent; the source of truth.
 - `wiki/` — markdown pages the agent maintains, with `[[wikilinks]]`, frontmatter, citations back to `raw/`.

@@ -23,6 +23,14 @@ CREATE TABLE IF NOT EXISTS turns (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_turns_created_at ON turns(created_at);
+
+CREATE TABLE IF NOT EXISTS facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL UNIQUE,
+    source TEXT NOT NULL,
+    confidence TEXT NOT NULL DEFAULT 'unverified',
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -68,3 +76,22 @@ class SqliteBackend:
             (f"{today}%",),
         ).fetchone()
         return {"sessions": sessions, "turns": turns}
+
+    def append_fact(self, text: str, source: str, confidence: str = "unverified") -> bool:
+        cur = self.conn.execute(
+            "INSERT OR IGNORE INTO facts (text, source, confidence, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (text, source, confidence, datetime.now(UTC).isoformat()),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def recent_facts(self, limit: int = 50) -> list[dict[str, str]]:
+        rows = self.conn.execute(
+            "SELECT text, source, confidence, created_at FROM facts ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [
+            {"text": text, "source": source, "confidence": confidence, "created_at": created_at}
+            for text, source, confidence, created_at in reversed(rows)
+        ]

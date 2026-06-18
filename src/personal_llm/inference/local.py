@@ -43,3 +43,12 @@ class LocalModelClient:
             piece = chunk.get("message", {}).get("content")
             if piece:
                 yield piece
+
+    def complete(self, messages: list[dict[str, str]]) -> str:
+        """Return the full model response as one string (non-streaming).
+
+        Used by batch jobs like fact distillation where there's no user waiting
+        on incremental output.
+        """
+        resp = self._client.chat(model=self.model_name, messages=messages, stream=False)
+        return resp.get("message", {}).get("content") or ""

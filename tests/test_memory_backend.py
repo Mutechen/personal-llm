@@ -67,6 +67,33 @@ def test_turn_counts_for_today(backend: MemoryBackend):
     assert backend.turn_counts_for_today() == {"sessions": 1, "turns": 2}
 
 
+def test_append_and_recent_facts_roundtrip(backend: MemoryBackend):
+    assert backend.append_fact("user runs Linux", "transcript:s1") is True
+    facts = backend.recent_facts()
+    assert len(facts) == 1
+    assert facts[0]["text"] == "user runs Linux"
+    assert facts[0]["source"] == "transcript:s1"
+    assert facts[0]["confidence"] == "unverified"
+
+
+def test_append_fact_is_idempotent_on_text(backend: MemoryBackend):
+    assert backend.append_fact("same fact", "transcript:s1") is True
+    assert backend.append_fact("same fact", "transcript:s2") is False
+    assert len(backend.recent_facts()) == 1
+
+
+def test_recent_facts_respects_limit_and_order(backend: MemoryBackend):
+    for i in range(5):
+        backend.append_fact(f"fact {i}", "transcript:s1")
+    facts = backend.recent_facts(limit=2)
+    assert [f["text"] for f in facts] == ["fact 3", "fact 4"]
+
+
+def test_append_fact_custom_confidence(backend: MemoryBackend):
+    backend.append_fact("grounded fact", "quran:2:255", confidence="grounded")
+    assert backend.recent_facts()[-1]["confidence"] == "grounded"
+
+
 @pytest.mark.parametrize("backend_cls", _BACKENDS, ids=lambda c: c.__name__)
 def test_backend_persists_across_instances(backend_cls, tmp_path: Path):
     """A fresh backend over the same vault sees turns written by an earlier one."""

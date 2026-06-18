@@ -1,8 +1,10 @@
 # Learning from agent transcripts — the cold-start growth source
 
-> Design proposal, not yet built. Status: draft (2026-06-18).
+> Status: P1 facts slice **built** (2026-06-18) — `personal-llm learn` ingests Claude Code
+> JSONL, distills facts with the local model, writes them to the recall store. Skills and
+> preferences (Stages for L5/L3) remain proposals below.
 > Slots into [ARCHITECTURE.md](ARCHITECTURE.md) §5 (sleep loop), §7.5 (permission model),
-> and layers L3/L4/L5. Read those first.
+> §4 L4 (fact epistemics), and layers L3/L4/L5. Read those first.
 
 ## 1. The problem this solves
 
@@ -158,9 +160,12 @@ successes and failures; (3) parameter-free (recall + insights) first, LoRA/DPO l
 
 ## 8. Phasing
 
-- **P1 (now-ish):** Stage 1 ingest of Claude Code JSONL + Stage 2 *facts* extractor (local
-  model) + Stage 3 write to the recall store. Smallest end-to-end slice; reuses the existing
-  sleep runner, agent, and memory backend. No cloud, no new heavy deps.
+- **P1 (built):** Stage 1 ingest of Claude Code JSONL + Stage 2 *facts* extractor (local
+  model) + Stage 3 write to the recall store. `src/personal_llm/learning/` (`transcripts.py`
+  parser, `distill.py` extractor, `runner.py` watermark + orchestration); CLI
+  `personal-llm learn [--source --limit --dry-run]`. Facts stored with `confidence=unverified`
+  (the thin seam for the fact-epistemics model in ARCHITECTURE.md §4 L4). No cloud, no new deps.
+  Not yet wired into the nightly sleep loop — invoked manually so it stays deliberately opt-in.
 - **P1.5:** skills extractor → review-queue proposals.
 - **P2:** preference extractor → DPO dataset; predict-the-expert evaluation harness.
 - **P2+:** additional transcript adapters; sandboxed self-play.
