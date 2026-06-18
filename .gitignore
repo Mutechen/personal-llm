@@ -50,3 +50,6 @@ htmlcov/
 # If you accidentally created one inside this repo:
 /vault/
 /.personal-llm/
+
+# Research PDFs — binary, fetchable; index tracked, papers not
+docs/research/*.pdf
