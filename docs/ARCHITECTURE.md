@@ -286,6 +286,8 @@ The most important architectural component for this project's vision, based on t
 
 **Resource management:** sleep-time runs use lower-priority CPU/GPU scheduling. If the user wakes the laptop and starts working, the loop pauses and resumes when idle returns.
 
+**Cold-start growth source.** Steps 1–6 assume a stream of interactions to learn from — but nobody converses with an immature personal LLM (the baby deadlock). The bootstrap is to have the loop *observe the user's existing conversations with capable agents* (Claude Code, etc.) and distill facts, skill proposals, and preference signal from them. Design in [LEARNING_FROM_TRANSCRIPTS.md](LEARNING_FROM_TRANSCRIPTS.md).
+
 ## 6. Sharing — the lobe ecosystem
 
 The user's instance accumulates value over time: a wiki on topics they care about, skills the agent wrote, domain LoRAs trained on books and documentation they fed in. Some of that value generalizes — a "Python coding companion" lobe, built from public Python books + open-source code, is useful to many people. Others' work is useful to the user in the same way. This section is about how those pieces move between vaults *without* the personal data underneath ever leaving its owner.
@@ -873,6 +875,7 @@ The architecture leans on this body of work; full pointers in [memory:key-refere
 
 - **Memory:** MemGPT / Letta — the memory-tier concept (core / recall / archival); evaluated and not adopted as a dependency (see [PRIOR_ART.md](PRIOR_ART.md)). The "Sleep-time Compute" paper (arXiv 2504.13171). Karpathy's "LLM Wiki" gist (April 2026).
 - **Self-improving agents:** Voyager (arXiv 2305.16291). AutoSkill (arXiv 2603.01145). SAGE (arXiv 2512.17102). The Awesome-Self-Evolving-Agents survey (EvoAgentX). Lifelong LLM agents survey (TPAMI 2026).
+- **Learning from agent transcripts** (cold-start bootstrap; see [LEARNING_FROM_TRANSCRIPTS.md](LEARNING_FROM_TRANSCRIPTS.md)): Trace2Skill (arXiv 2603.25158), EvoSkill (github sentient-agi/EvoSkill), SkillRL (arXiv 2602.08234), ExpeL / Contextual Experience Replay (arXiv 2506.06698), Trajectory-Informed Memory Generation (arXiv 2603.10600), Latent Preference from User Edits, PersonaMem-v2 (arXiv 2512.06688), On-policy Expert Corrections (arXiv 2512.14895), Externalization in LLM Agents review (arXiv 2604.08224).
 - **Continual learning:** "Mechanistic Analysis of Catastrophic Forgetting" (arXiv 2601.18699). FedPDPO (arXiv 2603.19741).
 - **Base models:** Hermes 4 Technical Report (arXiv 2508.18255). Qwen 3 release notes.
 - **Training:** Unsloth, Axolotl, TRL. QLoRA paper.
