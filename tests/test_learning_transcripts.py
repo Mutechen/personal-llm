@@ -114,7 +114,7 @@ def test_tolerates_bad_lines_and_missing_dir(tmp_path: Path):
     assert [t.text for t in s.turns] == ["ok"]
 
 
-def test_render_caps_length(tmp_path: Path):
+def test_render_tiny_cap_falls_back_to_head_cut(tmp_path: Path):
     session = TranscriptSession(
         session_id="s1",
         project="p",
@@ -122,3 +122,23 @@ def test_render_caps_length(tmp_path: Path):
         last_ts="",
     )
     assert len(session.render(max_chars=10)) == 10
+
+
+def test_render_keeps_head_and_tail_when_over_cap():
+    turns = [TranscriptTurn("user", "HEAD" + "a" * 500)]
+    turns += [TranscriptTurn("assistant", "b" * 500) for _ in range(5)]
+    turns += [TranscriptTurn("user", "c" * 500 + "TAIL")]
+    session = TranscriptSession("s1", "p", turns, "")
+
+    rendered = session.render(max_chars=400)
+    assert len(rendered) <= 400
+    assert "HEAD" in rendered  # opening survived
+    assert "TAIL" in rendered  # closing survived (was lost under plain truncation)
+    assert "truncated" in rendered  # seam marked
+
+
+def test_render_whole_session_when_under_cap():
+    session = TranscriptSession(
+        "s1", "p", [TranscriptTurn("user", "short")], ""
+    )
+    assert session.render() == "user: short"

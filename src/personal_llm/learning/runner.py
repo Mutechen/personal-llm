@@ -31,12 +31,20 @@ Extractor = Callable[[str], list[str]]
 
 
 @dataclass
+class SessionFacts:
+    session_id: str
+    project: str
+    facts: list[str]
+
+
+@dataclass
 class LearnResult:
     sessions_seen: int
     sessions_processed: int
     facts_extracted: int
     facts_added: int
     dry_run: bool
+    details: list[SessionFacts]
 
 
 def _load_processed(vault_path: Path) -> set[str]:
@@ -84,6 +92,7 @@ def learn_from_transcripts(
 
     seen = done = extracted = added = 0
     newly_done: set[str] = set()
+    details: list[SessionFacts] = []
 
     for session in iter_sessions(source):
         seen += 1
@@ -100,6 +109,7 @@ def learn_from_transcripts(
                 if backend.append_fact(fact, source_tag):
                     added += 1
             newly_done.add(session.session_id)
+        details.append(SessionFacts(session.session_id, session.project, facts))
         done += 1
 
     if not dry_run and newly_done:
@@ -111,4 +121,5 @@ def learn_from_transcripts(
         facts_extracted=extracted,
         facts_added=added,
         dry_run=dry_run,
+        details=details,
     )

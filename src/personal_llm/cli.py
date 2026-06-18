@@ -235,9 +235,19 @@ def learn(
         vault_path, cfg, source=source, limit=limit, dry_run=dry_run
     )
 
+    for session in result.details:
+        console.print(
+            f"\n[bold]{session.project}[/bold] "
+            f"[dim]· {session.session_id[:8]}[/dim]"
+        )
+        if not session.facts:
+            console.print("  [dim](no durable facts)[/dim]")
+        for fact in session.facts:
+            console.print(f"  - {fact}")
+
     tag = " [dim](dry run — nothing written)[/dim]" if result.dry_run else ""
     console.print(
-        f"[green]Learned[/green] from {result.sessions_processed} new "
+        f"\n[green]Learned[/green] from {result.sessions_processed} new "
         f"session(s) of {result.sessions_seen} seen{tag}."
     )
     console.print(

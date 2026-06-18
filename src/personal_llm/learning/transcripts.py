@@ -20,6 +20,10 @@ from pathlib import Path
 # context. Generous enough that most sessions pass through whole.
 MAX_RENDER_CHARS = 12000
 
+# When a session is over the cap, keep the head AND tail rather than truncating
+# to the opening — facts surface late (decisions, outcomes) as well as early.
+_TRUNCATION_MARKER = "\n\n[... middle of session truncated ...]\n\n"
+
 
 @dataclass(frozen=True)
 class TranscriptTurn:
@@ -35,9 +39,19 @@ class TranscriptSession:
     last_ts: str
 
     def render(self, max_chars: int = MAX_RENDER_CHARS) -> str:
-        """Flatten to a plain `role: text` block for the distiller."""
+        """Flatten to a plain `role: text` block for the distiller.
+
+        Over-cap sessions keep head + tail (so late-session facts survive); the
+        seam is marked. Degenerate caps too small for the marker fall back to a
+        plain head cut.
+        """
         body = "\n\n".join(f"{t.role}: {t.text}" for t in self.turns)
-        return body[:max_chars]
+        if len(body) <= max_chars:
+            return body
+        if max_chars <= len(_TRUNCATION_MARKER) + 2:
+            return body[:max_chars]
+        half = (max_chars - len(_TRUNCATION_MARKER)) // 2
+        return body[:half] + _TRUNCATION_MARKER + body[-half:]
 
 
 def _extract_text(content: object) -> str:
