@@ -182,7 +182,7 @@ def sleep(
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
-    """Run one sleep-time cycle and write today's growth log."""
+    """Run one sleep-time cycle: consolidate facts, write today's growth log."""
     vault_path = vault_mod.resolve_vault_path(vault)
     if not vault_mod.exists(vault_path):
         console.print(f"[red]No vault at {vault_path}.[/red]")
@@ -190,8 +190,25 @@ def sleep(
 
     from personal_llm.sleep.runner import run_once
 
-    growth_path = run_once(vault_path)
-    console.print(f"[green]Wrote[/green] {growth_path}")
+    report = run_once(vault_path)
+
+    if report.learned_facts is not None:
+        console.print(f"[dim]learned:[/dim] {report.learned_facts} new fact(s)")
+    if report.g1:
+        console.print(f"[dim]graded (G1):[/dim] {report.g1.newly_graded} new")
+    if report.g2:
+        console.print(f"[dim]graded (G2):[/dim] {report.g2.facts_seen} re-graded")
+    if report.dedup:
+        console.print(
+            f"[dim]dedup:[/dim] {report.dedup.merged} merged, "
+            f"{report.dedup.superseded} superseded"
+        )
+    if report.model_skipped:
+        console.print("[yellow]LLM steps skipped — local model unreachable.[/yellow]")
+    console.print(
+        f"[dim]active facts:[/dim] {report.active_facts}    "
+        f"[green]wrote[/green] {report.growth_path}"
+    )
 
 
 # --------------------------------------------------------------------------- learn

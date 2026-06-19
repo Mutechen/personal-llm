@@ -298,6 +298,8 @@ The most important architectural component for this project's vision, based on t
 
 **Cold-start growth source.** Steps 1–6 assume a stream of interactions to learn from — but nobody converses with an immature personal LLM (the baby deadlock). The bootstrap is to have the loop *observe the user's existing conversations with capable agents* (Claude Code, etc.) and distill facts, skill proposals, and preference signal from them. Design in [LEARNING_FROM_TRANSCRIPTS.md](LEARNING_FROM_TRANSCRIPTS.md).
 
+**Implemented so far.** `sleep.run_once` now runs a real consolidation cycle: (opt-in) learn facts from transcripts → grade them (G1 deterministic + G2 LLM volatility) → dedup/supersede (G3) → write a human-readable growth log of what changed. Transcript learning is gated on `config.sleep.learn_from_transcripts` (the loop never reads `~/.claude` on its own); LLM steps skip gracefully if the local model is down. Fact grading model in [FACT_GRADING.md](FACT_GRADING.md). Still aspirational above: wiki updates, skill curation, self-directed learning, LoRA training.
+
 ## 6. Sharing — the lobe ecosystem
 
 The user's instance accumulates value over time: a wiki on topics they care about, skills the agent wrote, domain LoRAs trained on books and documentation they fed in. Some of that value generalizes — a "Python coding companion" lobe, built from public Python books + open-source code, is useful to many people. Others' work is useful to the user in the same way. This section is about how those pieces move between vaults *without* the personal data underneath ever leaving its owner.

@@ -50,6 +50,19 @@ class RedactionConfig(BaseModel):
     extra: list[str] = Field(default_factory=list)
 
 
+class SleepConfig(BaseModel):
+    """What the nightly sleep-time loop does. See ARCHITECTURE.md §5.
+
+    Grading and dedup only ever touch facts already in the vault, so they run by
+    default. Learning from transcripts reaches into the user's agent history, so
+    it stays opt-in — the loop never reads `~/.claude` unless this is enabled.
+    """
+
+    learn_from_transcripts: bool = False
+    transcript_source: str | None = None  # defaults to ~/.claude/projects when enabled
+    llm_grading: bool = True  # run G2/G3 in sleep (needs the local model)
+
+
 class VaultConfig(BaseModel):
     """Top-level vault config schema."""
 
@@ -57,6 +70,7 @@ class VaultConfig(BaseModel):
     local_model: LocalModelConfig = Field(default_factory=LocalModelConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
     redaction: RedactionConfig = Field(default_factory=RedactionConfig)
+    sleep: SleepConfig = Field(default_factory=SleepConfig)
     mcp_servers: list[dict] = Field(default_factory=list)
 
 
