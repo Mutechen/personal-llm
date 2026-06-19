@@ -29,9 +29,22 @@ CREATE TABLE IF NOT EXISTS facts (
     text TEXT NOT NULL UNIQUE,
     source TEXT NOT NULL,
     confidence TEXT NOT NULL DEFAULT 'unverified',
+    volatility TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    valid_as_of TEXT,
+    graded_at TEXT,
     created_at TEXT NOT NULL
 );
 """
+
+# Columns added after the facts table first shipped. Existing vaults get them
+# via ADD COLUMN (non-breaking); fresh ones already have them from _SCHEMA.
+_FACT_MIGRATIONS = {
+    "volatility": "ALTER TABLE facts ADD COLUMN volatility TEXT",
+    "status": "ALTER TABLE facts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+    "valid_as_of": "ALTER TABLE facts ADD COLUMN valid_as_of TEXT",
+    "graded_at": "ALTER TABLE facts ADD COLUMN graded_at TEXT",
+}
 
 
 class SqliteBackend:
@@ -43,7 +56,19 @@ class SqliteBackend:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.executescript(_SCHEMA)
+        self._migrate_facts()
         self.conn.commit()
+
+    def _migrate_facts(self) -> None:
+        """Add fact columns missing from an older vault, then backfill anchors."""
+        existing = {row[1] for row in self.conn.execute("PRAGMA table_info(facts)")}
+        for column, ddl in _FACT_MIGRATIONS.items():
+            if column not in existing:
+                self.conn.execute(ddl)
+        # valid_as_of anchors TTL math; pre-grading rows default to created_at.
+        self.conn.execute(
+            "UPDATE facts SET valid_as_of = created_at WHERE valid_as_of IS NULL"
+        )
 
     def new_session_id(self) -> str:
         """ISO timestamp + 8 random hex chars (sortable, human-readable)."""
@@ -78,10 +103,11 @@ class SqliteBackend:
         return {"sessions": sessions, "turns": turns}
 
     def append_fact(self, text: str, source: str, confidence: str = "unverified") -> bool:
+        now = datetime.now(UTC).isoformat()
         cur = self.conn.execute(
-            "INSERT OR IGNORE INTO facts (text, source, confidence, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (text, source, confidence, datetime.now(UTC).isoformat()),
+            "INSERT OR IGNORE INTO facts (text, source, confidence, valid_as_of, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (text, source, confidence, now, now),
         )
         self.conn.commit()
         return cur.rowcount > 0
@@ -95,3 +121,27 @@ class SqliteBackend:
             {"text": text, "source": source, "confidence": confidence, "created_at": created_at}
             for text, source, confidence, created_at in reversed(rows)
         ]
+
+    def facts_for_grading(self) -> list[dict]:
+        """Return all `active` facts with the fields the grading pass needs.
+
+        Includes already-graded facts so the pass can re-evaluate TTL on
+        volatile ones; the grader decides what to skip.
+        """
+        rows = self.conn.execute(
+            "SELECT id, text, source, confidence, volatility, status, valid_as_of, "
+            "graded_at, created_at FROM facts WHERE status = 'active' ORDER BY id"
+        ).fetchall()
+        cols = [
+            "id", "text", "source", "confidence", "volatility",
+            "status", "valid_as_of", "graded_at", "created_at",
+        ]
+        return [dict(zip(cols, row, strict=True)) for row in rows]
+
+    def update_fact_grade(self, fact_id: int, volatility: str, status: str) -> None:
+        """Persist a grading decision: volatility bucket, lifecycle status, watermark."""
+        self.conn.execute(
+            "UPDATE facts SET volatility = ?, status = ?, graded_at = ? WHERE id = ?",
+            (volatility, status, datetime.now(UTC).isoformat(), fact_id),
+        )
+        self.conn.commit()

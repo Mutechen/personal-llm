@@ -57,3 +57,15 @@ class MemoryBackend(Protocol):
         `created_at` keys.
         """
         ...
+
+    def facts_for_grading(self) -> list[dict]:
+        """Return all `active` facts (with `id`) for the consolidation pass.
+
+        Each row carries id/text/source/confidence/volatility/status/
+        valid_as_of/graded_at/created_at — enough to grade and to re-check TTL.
+        """
+        ...
+
+    def update_fact_grade(self, fact_id: int, volatility: str, status: str) -> None:
+        """Persist one grading decision (volatility bucket + lifecycle status)."""
+        ...

@@ -256,6 +256,58 @@ def learn(
     )
 
 
+# --------------------------------------------------------------------------- grade
+
+
+@app.command()
+def grade(
+    ttl_days: Annotated[
+        int,
+        typer.Option("--ttl-days", help="Age after which a volatile fact expires."),
+    ] = 14,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show changes without writing them."),
+    ] = False,
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """Grade distilled facts: classify volatility, expire ephemeral/stale ones.
+
+    G1 of the consolidation pass (docs/FACT_GRADING.md) — deterministic, no
+    model calls. Demotes via status; nothing is hard-deleted.
+    """
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(f"[red]No vault at {vault_path}.[/red]")
+        raise typer.Exit(1)
+
+    from personal_llm.learning.grading import grade_facts
+    from personal_llm.memory import open_backend
+
+    result = grade_facts(open_backend(vault_path), ttl_days=ttl_days, dry_run=dry_run)
+
+    for change in result.changes:
+        colour = {"ephemeral": "red", "volatile": "yellow", "slow": "green"}.get(
+            change.volatility, "white"
+        )
+        flag = " [red]→ expired[/red]" if change.new_status == "expired" else ""
+        console.print(f"  [{colour}]{change.volatility:9}[/{colour}] {change.text}{flag}")
+
+    tag = " [dim](dry run — nothing written)[/dim]" if result.dry_run else ""
+    breakdown = ", ".join(f"{k}={v}" for k, v in sorted(result.by_volatility.items()))
+    console.print(
+        f"\n[green]Graded[/green] {result.facts_seen} active fact(s){tag}: {breakdown or 'none'}"
+    )
+    console.print(
+        f"  newly graded: {result.newly_graded} · "
+        f"ephemeral expired: {result.expired_ephemeral} · "
+        f"volatile expired (TTL): {result.expired_volatile_ttl}"
+    )
+
+
 # --------------------------------------------------------------------------- ingest
 
 

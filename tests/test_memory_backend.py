@@ -6,11 +6,13 @@ is the seam that keeps the protocol honest as more backends are added.
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from personal_llm.memory import MemoryBackend, SqliteBackend, open_backend
+from personal_llm.memory.sqlite import DB_RELATIVE_PATH
 
 _BACKENDS = [SqliteBackend]
 
@@ -92,6 +94,50 @@ def test_recent_facts_respects_limit_and_order(backend: MemoryBackend):
 def test_append_fact_custom_confidence(backend: MemoryBackend):
     backend.append_fact("grounded fact", "quran:2:255", confidence="grounded")
     assert backend.recent_facts()[-1]["confidence"] == "grounded"
+
+
+def test_facts_for_grading_and_update(backend: MemoryBackend):
+    backend.append_fact("a durable fact", "transcript:s1")
+    rows = backend.facts_for_grading()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["status"] == "active"
+    assert row["volatility"] is None
+    assert row["valid_as_of"] is not None  # anchored at insert
+
+    backend.update_fact_grade(row["id"], "ephemeral", "expired")
+    # expired facts drop out of the active grading set
+    assert backend.facts_for_grading() == []
+
+
+def test_migrates_pre_grading_facts_table(tmp_path: Path):
+    """An old vault whose facts table predates the grading columns is upgraded."""
+    db = tmp_path / DB_RELATIVE_PATH
+    db.parent.mkdir(parents=True)
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE facts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text TEXT NOT NULL UNIQUE,
+            source TEXT NOT NULL,
+            confidence TEXT NOT NULL DEFAULT 'unverified',
+            created_at TEXT NOT NULL
+        );
+        INSERT INTO facts (text, source, confidence, created_at)
+        VALUES ('old fact', 'transcript:s0', 'unverified', '2026-06-01T00:00:00+00:00');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    backend = SqliteBackend(tmp_path)
+    rows = backend.facts_for_grading()
+    assert len(rows) == 1
+    assert rows[0]["status"] == "active"
+    assert rows[0]["volatility"] is None
+    # valid_as_of backfilled from created_at so TTL math has an anchor
+    assert rows[0]["valid_as_of"] == "2026-06-01T00:00:00+00:00"
 
 
 @pytest.mark.parametrize("backend_cls", _BACKENDS, ids=lambda c: c.__name__)
