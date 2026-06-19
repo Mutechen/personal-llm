@@ -103,7 +103,10 @@ raw dump.
 - **G1 — deterministic, immediate win on the existing 440.** Add `volatility` / `status` /
   `valid_as_of`; heuristic ephemeral filter; TTL expiry for `volatile`. No LLM. Kills the
   sensor-reading class today.
-- **G2 — LLM grading.** Batched local grading of volatility + certainty hint; `graded_at`.
+- **G2 — LLM grading (built).** Batched local-model volatility re-grade — adds the `static`
+  bucket and catches what patterns miss; `grade_method='llm'` makes it idempotent over G1.
+  `personal-llm grade --llm`. Scope is volatility only; certainty stays at G4 (corroboration
+  is a better signal than a single-transcript guess). `learning/llm_grading.py`.
 - **G3 — semantic dedup + supersession.** Cluster, merge canonical, contradiction detection.
   Needs embeddings or LLM-judge over candidate pairs.
 - **G4 — corroboration certainty + retrieval weighting.** Bump cross-session facts; recall

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS facts (
     status TEXT NOT NULL DEFAULT 'active',
     valid_as_of TEXT,
     graded_at TEXT,
+    grade_method TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -44,6 +45,7 @@ _FACT_MIGRATIONS = {
     "status": "ALTER TABLE facts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
     "valid_as_of": "ALTER TABLE facts ADD COLUMN valid_as_of TEXT",
     "graded_at": "ALTER TABLE facts ADD COLUMN graded_at TEXT",
+    "grade_method": "ALTER TABLE facts ADD COLUMN grade_method TEXT",
 }
 
 
@@ -130,18 +132,25 @@ class SqliteBackend:
         """
         rows = self.conn.execute(
             "SELECT id, text, source, confidence, volatility, status, valid_as_of, "
-            "graded_at, created_at FROM facts WHERE status = 'active' ORDER BY id"
+            "graded_at, grade_method, created_at FROM facts WHERE status = 'active' ORDER BY id"
         ).fetchall()
         cols = [
-            "id", "text", "source", "confidence", "volatility",
-            "status", "valid_as_of", "graded_at", "created_at",
+            "id", "text", "source", "confidence", "volatility", "status",
+            "valid_as_of", "graded_at", "grade_method", "created_at",
         ]
         return [dict(zip(cols, row, strict=True)) for row in rows]
 
-    def update_fact_grade(self, fact_id: int, volatility: str, status: str) -> None:
-        """Persist a grading decision: volatility bucket, lifecycle status, watermark."""
+    def update_fact_grade(
+        self, fact_id: int, volatility: str, status: str, method: str = "heuristic"
+    ) -> None:
+        """Persist a grading decision: volatility bucket, lifecycle status, watermark.
+
+        `method` records who graded it (`heuristic` = G1 patterns, `llm` = G2),
+        so a later pass can re-grade only what it hasn't seen.
+        """
         self.conn.execute(
-            "UPDATE facts SET volatility = ?, status = ?, graded_at = ? WHERE id = ?",
-            (volatility, status, datetime.now(UTC).isoformat(), fact_id),
+            "UPDATE facts SET volatility = ?, status = ?, graded_at = ?, grade_method = ? "
+            "WHERE id = ?",
+            (volatility, status, datetime.now(UTC).isoformat(), method, fact_id),
         )
         self.conn.commit()

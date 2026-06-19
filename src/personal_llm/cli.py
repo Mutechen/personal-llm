@@ -269,6 +269,10 @@ def grade(
         bool,
         typer.Option("--dry-run", help="Show changes without writing them."),
     ] = False,
+    llm: Annotated[
+        bool,
+        typer.Option("--llm", help="Use the local model for finer grading (G2). Slower."),
+    ] = False,
     vault: Annotated[
         str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
@@ -276,18 +280,28 @@ def grade(
 ) -> None:
     """Grade distilled facts: classify volatility, expire ephemeral/stale ones.
 
-    G1 of the consolidation pass (docs/FACT_GRADING.md) — deterministic, no
-    model calls. Demotes via status; nothing is hard-deleted.
+    Default is G1 (docs/FACT_GRADING.md) — deterministic, no model calls.
+    `--llm` runs G2: the local model re-grades volatility (adds `static`, catches
+    what patterns miss). Either way nothing is hard-deleted; facts are demoted
+    via status.
     """
     vault_path = vault_mod.resolve_vault_path(vault)
     if not vault_mod.exists(vault_path):
         console.print(f"[red]No vault at {vault_path}.[/red]")
         raise typer.Exit(1)
 
-    from personal_llm.learning.grading import grade_facts
     from personal_llm.memory import open_backend
 
-    result = grade_facts(open_backend(vault_path), ttl_days=ttl_days, dry_run=dry_run)
+    backend = open_backend(vault_path)
+    if llm:
+        from personal_llm.learning.llm_grading import grade_facts_llm
+
+        cfg = config_mod.load(vault_path)
+        result = grade_facts_llm(backend, cfg, ttl_days=ttl_days, dry_run=dry_run)
+    else:
+        from personal_llm.learning.grading import grade_facts
+
+        result = grade_facts(backend, ttl_days=ttl_days, dry_run=dry_run)
 
     for change in result.changes:
         colour = {"ephemeral": "red", "volatile": "yellow", "slow": "green"}.get(

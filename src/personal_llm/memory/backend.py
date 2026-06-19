@@ -62,10 +62,13 @@ class MemoryBackend(Protocol):
         """Return all `active` facts (with `id`) for the consolidation pass.
 
         Each row carries id/text/source/confidence/volatility/status/
-        valid_as_of/graded_at/created_at — enough to grade and to re-check TTL.
+        valid_as_of/graded_at/grade_method/created_at — enough to grade, to
+        re-check TTL, and to tell a heuristic grade from an LLM one.
         """
         ...
 
-    def update_fact_grade(self, fact_id: int, volatility: str, status: str) -> None:
-        """Persist one grading decision (volatility bucket + lifecycle status)."""
+    def update_fact_grade(
+        self, fact_id: int, volatility: str, status: str, method: str = "heuristic"
+    ) -> None:
+        """Persist one grading decision (volatility bucket + lifecycle + method)."""
         ...

@@ -24,6 +24,10 @@ from personal_llm.memory import MemoryBackend
 
 DEFAULT_TTL_DAYS = 14
 
+# Volatility buckets, most-durable first. G1 assigns ephemeral/volatile/slow;
+# G2's LLM pass additionally distinguishes `static` from `slow`.
+VOLATILITY_BUCKETS = ("static", "slow", "volatile", "ephemeral")
+
 # Momentary machine/runtime state — never durable. Tight on purpose.
 _EPHEMERAL = [
     re.compile(r"\bload average\b", re.I),
@@ -84,6 +88,17 @@ def _is_past_ttl(valid_as_of: str | None, now: datetime, ttl_days: int) -> bool:
     return now - anchored > timedelta(days=ttl_days)
 
 
+def lifecycle_status(
+    volatility: str, valid_as_of: str | None, now: datetime, ttl_days: int
+) -> str:
+    """Map a volatility bucket (+ age) to a lifecycle status. Shared by G1/G2."""
+    if volatility == "ephemeral":
+        return "expired"
+    if volatility == "volatile" and _is_past_ttl(valid_as_of, now, ttl_days):
+        return "expired"
+    return "active"
+
+
 def grade_facts(
     backend: MemoryBackend,
     ttl_days: int = DEFAULT_TTL_DAYS,
@@ -101,12 +116,7 @@ def grade_facts(
     for fact in backend.facts_for_grading():
         result.facts_seen += 1
         volatility = fact["volatility"] or classify_volatility(fact["text"])
-        status = "active"
-
-        if volatility == "ephemeral":
-            status = "expired"
-        elif volatility == "volatile" and _is_past_ttl(fact["valid_as_of"], now, ttl_days):
-            status = "expired"
+        status = lifecycle_status(volatility, fact["valid_as_of"], now, ttl_days)
 
         result.by_volatility[volatility] = result.by_volatility.get(volatility, 0) + 1
 
