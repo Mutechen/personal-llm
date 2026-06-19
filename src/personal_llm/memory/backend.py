@@ -58,6 +58,14 @@ class MemoryBackend(Protocol):
         """
         ...
 
+    def recall_facts(self, limit: int = 50) -> list[dict[str, str]]:
+        """Return active facts for agent context, most-durable first.
+
+        Each fact is a dict with `text`, `volatility`, and `confidence` keys.
+        Ordered static -> slow -> volatile so the agent sees stable facts first.
+        """
+        ...
+
     def facts_for_grading(self) -> list[dict]:
         """Return all `active` facts (with `id`) for the consolidation pass.
 

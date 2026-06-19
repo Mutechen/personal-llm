@@ -21,7 +21,14 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.prompt import Prompt
 
-from personal_llm.agent.smol import RECALL_TURNS, build_agent, chat_turn, format_recall_context
+from personal_llm.agent.smol import (
+    RECALL_FACTS,
+    RECALL_TURNS,
+    build_agent,
+    chat_turn,
+    format_facts_context,
+    format_recall_context,
+)
 from personal_llm.config import VaultConfig
 from personal_llm.inference.local import LocalModelClient
 from personal_llm.memory import open_backend
@@ -51,12 +58,16 @@ def run(vault_path: Path, config: VaultConfig) -> None:
     backend = open_backend(vault_path)
     session_id = backend.new_session_id()
     recalled = backend.recent_turns(RECALL_TURNS)
-    agent = build_agent(
-        vault_path, config, memory_context=format_recall_context(recalled)
+    facts = backend.recall_facts(RECALL_FACTS)
+    memory_context = "\n\n".join(
+        block
+        for block in (format_facts_context(facts), format_recall_context(recalled))
+        if block
     )
+    agent = build_agent(vault_path, config, memory_context=memory_context or None)
     tool_names = [t.name for t in agent.tools.values()] if hasattr(agent, "tools") else []
 
-    _print_banner(config, vault_path, tool_names, len(recalled))
+    _print_banner(config, vault_path, tool_names, len(recalled), len(facts))
 
     while True:
         try:
@@ -102,15 +113,24 @@ def run(vault_path: Path, config: VaultConfig) -> None:
 
 
 def _print_banner(
-    config: VaultConfig, vault_path: Path, tool_names: list[str], recalled: int
+    config: VaultConfig,
+    vault_path: Path,
+    tool_names: list[str],
+    recalled: int,
+    facts: int = 0,
 ) -> None:
     console.print()
     console.rule("[bold]personal-llm[/bold]")
     console.print(f"[dim]vault:[/dim] {vault_path}")
     console.print(f"[dim]model:[/dim] {config.local_model.name} @ {config.local_model.endpoint}")
     console.print(f"[dim]tools:[/dim] {', '.join(tool_names) if tool_names else '(none)'}")
-    if recalled:
-        console.print(f"[dim]memory:[/dim] {recalled} prior turn(s) recalled")
+    if facts or recalled:
+        bits = []
+        if facts:
+            bits.append(f"{facts} fact(s)")
+        if recalled:
+            bits.append(f"{recalled} prior turn(s)")
+        console.print(f"[dim]memory:[/dim] {', '.join(bits)} recalled")
     console.print(f"[dim]help:[/dim]  {HELP_COMMAND}    [dim]quit:[/dim] /quit")
     console.rule()
     console.print()

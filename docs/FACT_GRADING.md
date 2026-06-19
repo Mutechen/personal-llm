@@ -112,8 +112,12 @@ raw dump.
   relations; losers become `merged`/`superseded` pointing at their keeper (`canonical_id` /
   `superseded_by`), never deleted. Idempotent. `personal-llm dedup [--threshold]`.
   `learning/dedup.py`. Embedding-based clustering arrives with the sqlite-vss chunk.
-- **G4 — corroboration certainty + retrieval weighting.** Bump cross-session facts; recall
-  prefers active/durable/certain.
+- **G4 — retrieval weighting (built) + corroboration certainty (pending).** Retrieval:
+  `recall_facts()` surfaces active facts most-durable-first (static -> slow -> volatile) into
+  the agent's instructions, so `ask`/`chat` start already knowing the user
+  (`agent/smol.py` `format_facts_context` / `build_memory_context`). Still pending:
+  bumping certainty for facts corroborated across multiple sessions, and weighting retrieval
+  by that certainty.
 - **Later — provenance rules.** Revelation/scientific provenance, citation enforcement, a
   `personal-llm facts review` CLI for user override.
 

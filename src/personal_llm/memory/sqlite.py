@@ -128,6 +128,23 @@ class SqliteBackend:
             for text, source, confidence, created_at in reversed(rows)
         ]
 
+    def recall_facts(self, limit: int = 50) -> list[dict[str, str]]:
+        """Return active facts for agent context, most-durable first.
+
+        Ordered static -> slow -> volatile (ungraded last), newest within a
+        bucket. This is the retrieval the agent reads as "what I know about you".
+        """
+        rows = self.conn.execute(
+            "SELECT text, volatility, confidence FROM facts WHERE status = 'active' "
+            "ORDER BY CASE volatility WHEN 'static' THEN 0 WHEN 'slow' THEN 1 "
+            "WHEN 'volatile' THEN 2 ELSE 3 END, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [
+            {"text": text, "volatility": volatility, "confidence": confidence}
+            for text, volatility, confidence in rows
+        ]
+
     def facts_for_grading(self) -> list[dict]:
         """Return all `active` facts with the fields the grading pass needs.
 
