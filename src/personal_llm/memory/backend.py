@@ -72,3 +72,11 @@ class MemoryBackend(Protocol):
     ) -> None:
         """Persist one grading decision (volatility bucket + lifecycle + method)."""
         ...
+
+    def merge_fact(self, fact_id: int, canonical_id: int) -> None:
+        """Fold a duplicate fact into its canonical (status `merged`)."""
+        ...
+
+    def supersede_fact(self, fact_id: int, superseded_by: int) -> None:
+        """Mark a fact obsoleted by a newer one (status `superseded`)."""
+        ...

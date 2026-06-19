@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS facts (
     valid_as_of TEXT,
     graded_at TEXT,
     grade_method TEXT,
+    canonical_id INTEGER,
+    superseded_by INTEGER,
     created_at TEXT NOT NULL
 );
 """
@@ -46,6 +48,8 @@ _FACT_MIGRATIONS = {
     "valid_as_of": "ALTER TABLE facts ADD COLUMN valid_as_of TEXT",
     "graded_at": "ALTER TABLE facts ADD COLUMN graded_at TEXT",
     "grade_method": "ALTER TABLE facts ADD COLUMN grade_method TEXT",
+    "canonical_id": "ALTER TABLE facts ADD COLUMN canonical_id INTEGER",
+    "superseded_by": "ALTER TABLE facts ADD COLUMN superseded_by INTEGER",
 }
 
 
@@ -152,5 +156,21 @@ class SqliteBackend:
             "UPDATE facts SET volatility = ?, status = ?, graded_at = ?, grade_method = ? "
             "WHERE id = ?",
             (volatility, status, datetime.now(UTC).isoformat(), method, fact_id),
+        )
+        self.conn.commit()
+
+    def merge_fact(self, fact_id: int, canonical_id: int) -> None:
+        """Fold a duplicate into its canonical fact (reversible: status only)."""
+        self.conn.execute(
+            "UPDATE facts SET status = 'merged', canonical_id = ? WHERE id = ?",
+            (canonical_id, fact_id),
+        )
+        self.conn.commit()
+
+    def supersede_fact(self, fact_id: int, superseded_by: int) -> None:
+        """Mark a fact obsoleted by a newer one (reversible: status only)."""
+        self.conn.execute(
+            "UPDATE facts SET status = 'superseded', superseded_by = ? WHERE id = ?",
+            (superseded_by, fact_id),
         )
         self.conn.commit()

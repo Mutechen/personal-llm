@@ -107,8 +107,11 @@ raw dump.
   bucket and catches what patterns miss; `grade_method='llm'` makes it idempotent over G1.
   `personal-llm grade --llm`. Scope is volatility only; certainty stays at G4 (corroboration
   is a better signal than a single-transcript guess). `learning/llm_grading.py`.
-- **G3 — semantic dedup + supersession.** Cluster, merge canonical, contradiction detection.
-  Needs embeddings or LLM-judge over candidate pairs.
+- **G3 — semantic dedup + supersession (built).** Lexical Jaccard clustering (no embeddings
+  yet) feeds a per-cluster local-model judge that returns `[loser, keeper]` merge/supersede
+  relations; losers become `merged`/`superseded` pointing at their keeper (`canonical_id` /
+  `superseded_by`), never deleted. Idempotent. `personal-llm dedup [--threshold]`.
+  `learning/dedup.py`. Embedding-based clustering arrives with the sqlite-vss chunk.
 - **G4 — corroboration certainty + retrieval weighting.** Bump cross-session facts; recall
   prefers active/durable/certain.
 - **Later — provenance rules.** Revelation/scientific provenance, citation enforcement, a

@@ -322,6 +322,57 @@ def grade(
     )
 
 
+# --------------------------------------------------------------------------- dedup
+
+
+@app.command()
+def dedup(
+    threshold: Annotated[
+        float,
+        typer.Option("--threshold", help="Lexical similarity to cluster (0-1)."),
+    ] = 0.5,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show merges/supersessions without writing."),
+    ] = False,
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """Consolidate facts: merge duplicates, supersede outdated ones (G3).
+
+    Clusters active facts by lexical overlap, then the local model decides
+    merges/supersessions. Reversible — losers are demoted, never deleted.
+    """
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(f"[red]No vault at {vault_path}.[/red]")
+        raise typer.Exit(1)
+
+    from personal_llm.learning.dedup import dedup_facts
+    from personal_llm.memory import open_backend
+
+    cfg = config_mod.load(vault_path)
+    result = dedup_facts(
+        open_backend(vault_path), cfg, threshold=threshold, dry_run=dry_run
+    )
+
+    for change in result.changes:
+        verb = "merge" if change.kind == "merge" else "supersede"
+        colour = "yellow" if change.kind == "merge" else "magenta"
+        console.print(f"  [{colour}]{verb}[/{colour}]")
+        console.print(f"    [dim]drop:[/dim] {change.loser_text}")
+        console.print(f"    [dim]keep:[/dim] {change.keeper_text}")
+
+    tag = " [dim](dry run — nothing written)[/dim]" if result.dry_run else ""
+    console.print(
+        f"\n[green]Consolidated[/green] {result.facts_seen} active fact(s) in "
+        f"{result.clusters} cluster(s){tag}: merged {result.merged}, "
+        f"superseded {result.superseded}"
+    )
+
+
 # --------------------------------------------------------------------------- ingest
 
 
