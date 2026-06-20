@@ -31,7 +31,8 @@ from personal_llm.memory import open_backend
 class SleepReport:
     date: str
     growth_path: Path | None = None
-    learned_facts: int | None = None  # None when learning is disabled
+    learning_enabled: bool = False
+    learned_facts: int | None = None  # None when learning is disabled or skipped
     g1: GradeResult | None = None
     g2: GradeResult | None = None
     dedup: DedupResult | None = None
@@ -54,9 +55,17 @@ def run_once(vault_path: Path) -> SleepReport:
     config = config_mod.load(vault_path)
     backend = open_backend(vault_path)
     today = datetime.now(UTC).strftime("%Y-%m-%d")
-    report = SleepReport(date=today)
+    report = SleepReport(
+        date=today, learning_enabled=config.sleep.learn_from_transcripts
+    )
 
-    if config.sleep.learn_from_transcripts:
+    # The local model is needed for learning and for the G2/G3 steps. Check once;
+    # if it's down (a real possibility for a 3am cron), those steps skip and only
+    # the deterministic G1 grade runs.
+    wants_model = config.sleep.learn_from_transcripts or config.sleep.llm_grading
+    model_up = _model_available(config) if wants_model else False
+
+    if config.sleep.learn_from_transcripts and model_up:
         source = (
             Path(config.sleep.transcript_source)
             if config.sleep.transcript_source
@@ -68,10 +77,11 @@ def run_once(vault_path: Path) -> SleepReport:
 
     report.g1 = grade_facts(backend)
 
-    if config.sleep.llm_grading and _model_available(config):
+    if config.sleep.llm_grading and model_up:
         report.g2 = grade_facts_llm(backend, config)
         report.dedup = dedup_facts(backend, config)
-    elif config.sleep.llm_grading:
+
+    if wants_model and not model_up:
         report.model_skipped = True
 
     report.turn_counts = backend.turn_counts_for_today()
@@ -89,8 +99,10 @@ def _render(report: SleepReport) -> str:
     lines = [f"# Growth log — {report.date}", ""]
 
     lines.append("## Learned")
-    if report.learned_facts is None:
+    if not report.learning_enabled:
         lines.append("- Transcript learning disabled (`sleep.learn_from_transcripts`).")
+    elif report.learned_facts is None:
+        lines.append("- Transcript learning enabled but skipped — local model unreachable.")
     else:
         lines.append(f"- New facts from transcripts: **{report.learned_facts}**")
 
