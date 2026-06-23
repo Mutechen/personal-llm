@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly trigger for the personal-llm sleep-time growth loop
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# The point of a timer over cron: a run missed because the machine was asleep or
+# off at 03:00 fires on the next wake/boot instead of being silently skipped.
+Persistent=true
+# Spread load if several machines share a backend; harmless on a single laptop.
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

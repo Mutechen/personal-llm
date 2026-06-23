@@ -1,0 +1,18 @@
+# Template — install-sleep-timer.sh fills the exec/environment placeholders and
+# copies this to ~/.config/systemd/user/personal-llm-sleep.service. Do not edit
+# the installed copy by hand; re-run the installer.
+[Unit]
+Description=personal-llm sleep-time growth loop (consolidate facts, write growth log)
+Documentation=https://github.com/Mutechen/personal-llm/blob/main/docs/ARCHITECTURE.md
+# Ollama is an optional runtime dependency. If it runs as a system service
+# (`systemctl enable ollama`) it will be up by the time this fires; if it is
+# down, the loop still runs the deterministic steps and skips the model-backed
+# ones. So no hard dependency is declared here.
+
+[Service]
+Type=oneshot
+ExecStart="@EXEC@"
+@ENVIRON@
+# Be a good citizen on a machine that may also be doing other idle work.
+Nice=10
+IOSchedulingClass=idle

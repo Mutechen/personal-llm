@@ -127,7 +127,7 @@ Fill in the `Background` section — name, current projects, things to never bri
 
 ## 6. (Optional) Wire up the sleep-time loop
 
-Phase 0's sleep-time loop is a heartbeat — it writes a daily growth log so you can see the agent is alive. Phase 1+ adds real work (ingestion, wiki updates, learning sessions).
+The sleep-time loop consolidates your vault each night: (opt-in) learn new facts from your agent transcripts, grade them, dedup, and write a growth log of what changed.
 
 Run it manually:
 
@@ -136,11 +136,22 @@ uv run personal-llm sleep
 cat ~/.personal-llm/vault/growth/$(date +%F).md
 ```
 
-…or schedule it via cron:
+To have it **learn** (not just grade existing facts), enable it in your vault `config.yaml`:
 
-```cron
-0 3 * * *  /path/to/uv run --directory /path/to/personal-llm personal-llm sleep
+```yaml
+sleep:
+  learn_from_transcripts: true   # opt-in: reads your ~/.claude transcripts locally
 ```
+
+To run it automatically, install the shipped **systemd user timer** (portable, travels with the repo; `Persistent=true` so a run missed while the laptop was asleep fires on next wake):
+
+```bash
+# exFAT/uv installs: export UV_PROJECT_ENVIRONMENT first so it's baked into the unit
+./deploy/install-sleep-timer.sh
+systemctl --user list-timers personal-llm-sleep.timer
+```
+
+See [`deploy/README.md`](../deploy/README.md) for details, the run-once/log commands, uninstall, and a cron alternative.
 
 ## 7. Check status anytime
 
