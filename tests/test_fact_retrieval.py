@@ -27,6 +27,21 @@ def test_recall_facts_orders_durable_first(tmp_path: Path):
     assert [f["text"] for f in facts] == ["static one", "slow one", "volatile one"]
 
 
+def test_recall_facts_weights_corroboration_within_bucket(tmp_path: Path):
+    """Within one volatility bucket, better-corroborated facts surface first,
+    overriding the recency (id DESC) tiebreak."""
+    backend = SqliteBackend(tmp_path)
+    backend.append_fact("well supported", "transcript:s1")
+    backend.append_fact("well supported", "transcript:s2")  # corroboration -> 2
+    _graded(backend, "well supported", "static")
+    _graded(backend, "single source", "static")  # newer (higher id), corroboration 1
+
+    assert [f["text"] for f in backend.recall_facts()] == [
+        "well supported",
+        "single source",
+    ]
+
+
 def test_recall_facts_excludes_inactive(tmp_path: Path):
     backend = SqliteBackend(tmp_path)
     _graded(backend, "kept", "static")

@@ -84,6 +84,39 @@ def test_append_fact_is_idempotent_on_text(backend: MemoryBackend):
     assert len(backend.recent_facts()) == 1
 
 
+def test_append_fact_corroborates_across_sources(backend: MemoryBackend):
+    """A re-assertion from a new session raises corroboration and promotes certainty."""
+    assert backend.append_fact("user runs Linux", "transcript:s1") is True
+    assert backend.append_fact("user runs Linux", "transcript:s2") is False
+
+    fact = backend.recall_facts()[0]
+    assert fact["corroboration"] == 2
+    assert fact["confidence"] == "corroborated"
+
+
+def test_append_fact_same_source_does_not_corroborate(backend: MemoryBackend):
+    """A duplicate from the same session is within-session repetition, not support."""
+    backend.append_fact("user runs Linux", "transcript:s1")
+    backend.append_fact("user runs Linux", "transcript:s1")
+
+    fact = backend.recall_facts()[0]
+    assert fact["corroboration"] == 1
+    assert fact["confidence"] == "unverified"
+
+
+def test_merge_carries_corroboration_onto_canonical(backend: MemoryBackend):
+    """G3 merging a near-dup is cross-session support: it promotes the keeper."""
+    backend.append_fact("user runs Linux", "transcript:s1")
+    backend.append_fact("the user is on Linux", "transcript:s2")
+    rows = {f["text"]: f["id"] for f in backend.facts_for_grading()}
+    backend.merge_fact(rows["the user is on Linux"], rows["user runs Linux"])
+
+    active = backend.recall_facts()
+    assert [f["text"] for f in active] == ["user runs Linux"]  # loser dropped out
+    assert active[0]["corroboration"] == 2
+    assert active[0]["confidence"] == "corroborated"
+
+
 def test_recent_facts_respects_limit_and_order(backend: MemoryBackend):
     for i in range(5):
         backend.append_fact(f"fact {i}", "transcript:s1")

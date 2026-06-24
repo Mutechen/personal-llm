@@ -112,12 +112,17 @@ raw dump.
   relations; losers become `merged`/`superseded` pointing at their keeper (`canonical_id` /
   `superseded_by`), never deleted. Idempotent. `personal-llm dedup [--threshold]`.
   `learning/dedup.py`. Embedding-based clustering arrives with the sqlite-vss chunk.
-- **G4 — retrieval weighting (built) + corroboration certainty (pending).** Retrieval:
-  `recall_facts()` surfaces active facts most-durable-first (static -> slow -> volatile) into
-  the agent's instructions, so `ask`/`chat` start already knowing the user
-  (`agent/smol.py` `format_facts_context` / `build_memory_context`). Still pending:
-  bumping certainty for facts corroborated across multiple sessions, and weighting retrieval
-  by that certainty.
+- **G4 — retrieval weighting + corroboration certainty (built).** Retrieval:
+  `recall_facts()` surfaces active facts most-durable-first (static -> slow -> volatile),
+  then by corroboration, into the agent's instructions, so `ask`/`chat` start already knowing
+  the user (`agent/smol.py` `format_facts_context` / `build_memory_context`). Corroboration:
+  accrues *incrementally*, no separate pass — `append_fact` bumps the count when an identical
+  fact is re-asserted from a different session, and `merge_fact` carries a G3 near-dup's count
+  onto its keeper; at `CORROBORATION_THRESHOLD` (2 independent sessions) certainty is promoted
+  `unverified -> corroborated` (never overriding `suspect`). The within-bucket corroboration
+  tiebreak then weights well-supported facts into the top-`limit` retrieval cut. It rides on
+  `learn`/`dedup` (and so on `sleep`); the learn watermark keeps it from double-counting.
+  `memory/sqlite.py` (`_bump_corroboration`).
 - **Later — provenance rules.** Revelation/scientific provenance, citation enforcement, a
   `personal-llm facts review` CLI for user override.
 

@@ -46,7 +46,10 @@ class MemoryBackend(Protocol):
         volatility / provenance) deferred to ARCHITECTURE.md §4 L4.
 
         Idempotent on `text`: re-inserting an identical fact is a no-op and
-        returns False, so distillation re-runs don't duplicate.
+        returns False, so distillation re-runs don't duplicate. A no-op
+        re-assertion from a *different* source still corroborates the existing
+        fact (raising its corroboration count and, past a threshold, its
+        certainty).
         """
         ...
 
@@ -61,8 +64,10 @@ class MemoryBackend(Protocol):
     def recall_facts(self, limit: int = 50) -> list[dict[str, str]]:
         """Return active facts for agent context, most-durable first.
 
-        Each fact is a dict with `text`, `volatility`, and `confidence` keys.
-        Ordered static -> slow -> volatile so the agent sees stable facts first.
+        Each fact is a dict with `text`, `volatility`, `confidence`, and
+        `corroboration` keys. Ordered static -> slow -> volatile so the agent
+        sees stable facts first, with cross-session corroboration as the
+        within-bucket tiebreak.
         """
         ...
 
@@ -82,7 +87,11 @@ class MemoryBackend(Protocol):
         ...
 
     def merge_fact(self, fact_id: int, canonical_id: int) -> None:
-        """Fold a duplicate fact into its canonical (status `merged`)."""
+        """Fold a duplicate fact into its canonical (status `merged`).
+
+        The duplicate's corroboration carries onto the canonical, since the merge
+        is itself cross-session evidence for the same fact.
+        """
         ...
 
     def supersede_fact(self, fact_id: int, superseded_by: int) -> None:
