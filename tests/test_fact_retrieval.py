@@ -7,7 +7,10 @@ from pathlib import Path
 from personal_llm.agent.smol import (
     build_memory_context,
     format_facts_context,
+    format_relevant_facts,
+    retrieve_relevant_facts,
 )
+from personal_llm.config import EmbeddingModelConfig, VaultConfig
 from personal_llm.memory import SqliteBackend
 
 
@@ -66,6 +69,28 @@ def test_format_facts_context_renders_block():
     assert "What you know about this user" in block
     assert "- user runs Linux" in block
     assert "- uses uv" in block
+
+
+def test_format_relevant_facts_empty_is_blank():
+    assert format_relevant_facts([]) == ""
+
+
+def test_format_relevant_facts_renders_block():
+    block = format_relevant_facts([{"text": "user runs Linux"}, {"text": "uses uv"}])
+    assert "Facts relevant to this request" in block
+    assert "- user runs Linux" in block
+    assert "- uses uv" in block
+
+
+def test_retrieve_relevant_facts_falls_back_when_model_unavailable(tmp_path: Path):
+    """If the embedding model is unreachable, retrieval is empty, not an error,
+    so the agent still runs without semantic recall."""
+    backend = SqliteBackend(tmp_path)
+    _graded(backend, "static fact", "static")
+    cfg = VaultConfig(
+        embedding_model=EmbeddingModelConfig(endpoint="http://localhost:1")
+    )
+    assert retrieve_relevant_facts(backend, cfg, "anything") == []
 
 
 def test_build_memory_context_facts_only(tmp_path: Path):

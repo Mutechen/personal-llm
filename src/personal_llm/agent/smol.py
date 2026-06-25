@@ -27,6 +27,9 @@ RECALL_TURNS = 20
 # How many curated facts to fold into the agent's context (most-durable first).
 RECALL_FACTS = 50
 
+# How many query-relevant facts to retrieve per request via semantic search.
+RELEVANT_FACTS_K = 8
+
 
 @dataclass
 class AgentRunResult:
@@ -70,6 +73,48 @@ def format_facts_context(facts: list[dict[str, str]]) -> str:
         "don't recite them back.\n\n"
         f"{body}"
     )
+
+
+def format_relevant_facts(facts: list[dict[str, str]]) -> str:
+    """Render query-relevant facts (from semantic search) as a per-request block.
+
+    Returns an empty string when there are no facts, so callers can pass the
+    result straight through without a guard.
+    """
+    if not facts:
+        return ""
+    body = "\n".join(f"- {f['text']}" for f in facts)
+    return (
+        "## Facts relevant to this request\n\n"
+        "Distilled facts retrieved by meaning for what was just asked. Use them "
+        "if relevant; ignore them if not.\n\n"
+        f"{body}"
+    )
+
+
+def retrieve_relevant_facts(
+    backend: MemoryBackend,
+    config: VaultConfig,
+    query: str,
+    k: int = RELEVANT_FACTS_K,
+) -> list[dict]:
+    """Semantically search the user's facts for ones bearing on `query`.
+
+    Searches only already-embedded facts (the sleep loop and `recall` keep
+    embeddings current), so the agent path stays fast. Returns [] when the
+    embedding model is unavailable, so the agent still runs without it.
+    """
+    from personal_llm.inference.local import LocalModelClient
+
+    ok, _ = LocalModelClient(
+        config.embedding_model.name, config.embedding_model.endpoint
+    ).health()
+    if not ok:
+        return []
+
+    from personal_llm.learning.embeddings import semantic_search
+
+    return semantic_search(backend, config, query, k=k, ensure_embedded=False)
 
 
 def build_memory_context(backend: MemoryBackend, recall_turns: int = 0) -> str:
@@ -129,9 +174,13 @@ def ask(
     prompt: str,
     max_steps: int = DEFAULT_MAX_STEPS,
 ) -> AgentRunResult:
-    """Single-shot agent invocation. No conversation state, but it still recalls
-    the curated facts so a one-off `ask` already knows the user."""
-    memory_context = build_memory_context(open_backend(vault_path)) or None
+    """Single-shot agent invocation. No conversation state, but it recalls both
+    the durable curated facts (identity grounding) and the facts most relevant to
+    this prompt (semantic search), so a one-off `ask` already knows the user."""
+    backend = open_backend(vault_path)
+    durable = build_memory_context(backend)
+    relevant = format_relevant_facts(retrieve_relevant_facts(backend, config, prompt))
+    memory_context = "\n\n".join(b for b in (durable, relevant) if b) or None
     agent = build_agent(
         vault_path, config, max_steps=max_steps, memory_context=memory_context
     )
@@ -148,6 +197,7 @@ def chat_turn(
     backend: MemoryBackend,
     session_id: str,
     user_message: str,
+    extra_context: str = "",
 ) -> str:
     """Run one chat-REPL turn against an already-built agent.
 
@@ -155,8 +205,14 @@ def chat_turn(
     sleep-time loop sees a complete record. The agent's own ReAct trajectory is
     preserved across turns by `reset=False`; that's what gives the REPL
     in-session continuity without prompt-stuffing.
+
+    `extra_context` (e.g. query-relevant facts the REPL retrieved for this turn)
+    is prepended to the prompt the agent sees, but the *stored* user turn is the
+    raw message, so transcripts stay clean. Retrieval lives in the caller so this
+    handler has no model dependency and stays unit-testable.
     """
     backend.append_turn(session_id, "user", user_message)
-    answer = str(agent.run(user_message, reset=False))
+    prompt = f"{extra_context}\n\n{user_message}" if extra_context else user_message
+    answer = str(agent.run(prompt, reset=False))
     backend.append_turn(session_id, "assistant", answer)
     return answer

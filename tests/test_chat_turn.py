@@ -56,6 +56,23 @@ def test_chat_turn_preserves_agent_trajectory_across_turns(tmp_path: Path):
     assert [t["content"] for t in turns] == ["hi", "hello", "what color?", "blue"]
 
 
+def test_chat_turn_prepends_extra_context_but_stores_raw(tmp_path: Path):
+    """Query-relevant context reaches the agent, but the stored turn is the raw
+    user message so transcripts stay clean."""
+    backend = SqliteBackend(tmp_path)
+    agent = _FakeAgent(answers=["ok"])
+    session_id = backend.new_session_id()
+
+    chat_turn(
+        agent, backend, session_id, "where do I keep my code?",
+        extra_context="## Facts relevant to this request\n\n- user uses a Samsung T5",
+    )
+
+    assert "Samsung T5" in agent.calls[0]["task"]
+    assert agent.calls[0]["task"].endswith("where do I keep my code?")
+    assert backend.recent_turns()[0]["content"] == "where do I keep my code?"
+
+
 def test_chat_turn_coerces_non_string_answers(tmp_path: Path):
     """smolagents' final_answer can be any type; chat_turn returns a string."""
     backend = SqliteBackend(tmp_path)

@@ -53,6 +53,31 @@ def test_semantic_search_finds_relevant_fact(tmp_path: Path):
     assert len(results) == 2
 
 
+def test_semantic_search_no_ensure_skips_backlog(tmp_path: Path):
+    """The agent path (ensure_embedded=False) searches only what's embedded and
+    does not embed the backlog mid-conversation."""
+    backend = SqliteBackend(tmp_path)
+    _seed(backend)
+    embed_facts(backend, VaultConfig(), embedder=_embedder)
+    backend.append_fact("the user plays guitar", "transcript:s2")  # not embedded yet
+
+    results = semantic_search(
+        backend,
+        VaultConfig(),
+        "any musical hobbies?",
+        k=3,
+        embedder=_embedder,
+        ensure_embedded=False,
+    )
+    # the new fact was never embedded, so it can't surface...
+    assert "the user plays guitar" not in [r["text"] for r in results]
+    # ...and the call left it un-embedded (no backlog compute happened).
+    assert backend.facts_needing_embedding("nomic-embed-text") == [
+        {"id": next(f["id"] for f in backend.facts_for_grading() if f["text"] == "the user plays guitar"),
+         "text": "the user plays guitar"}
+    ]
+
+
 def test_semantic_search_embeds_new_facts_first(tmp_path: Path):
     backend = SqliteBackend(tmp_path)
     _seed(backend)

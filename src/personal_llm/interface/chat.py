@@ -28,6 +28,8 @@ from personal_llm.agent.smol import (
     chat_turn,
     format_facts_context,
     format_recall_context,
+    format_relevant_facts,
+    retrieve_relevant_facts,
 )
 from personal_llm.config import VaultConfig
 from personal_llm.inference.local import LocalModelClient
@@ -99,7 +101,12 @@ def run(vault_path: Path, config: VaultConfig) -> None:
         console.print()
         try:
             with console.status("[dim]thinking…[/dim]", spinner="dots"):
-                answer = chat_turn(agent, backend, session_id, user_input)
+                relevant = format_relevant_facts(
+                    retrieve_relevant_facts(backend, config, user_input)
+                )
+                answer = chat_turn(
+                    agent, backend, session_id, user_input, extra_context=relevant
+                )
         except KeyboardInterrupt:
             console.print("[dim](interrupted)[/dim]\n")
             continue

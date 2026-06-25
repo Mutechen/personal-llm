@@ -66,13 +66,17 @@ def semantic_search(
     query: str,
     k: int = 5,
     embedder: Embedder | None = None,
+    ensure_embedded: bool = True,
 ) -> list[dict]:
     """Return the `k` active facts most similar to `query`.
 
-    Ensures embeddings are current first, so a fact added since the last compute
-    is still findable.
+    With `ensure_embedded` (the default, used by the `recall` CLI) the backlog is
+    embedded first so a freshly added fact is findable. The agent path passes
+    `ensure_embedded=False` to stay fast — it searches only what the sleep loop
+    has already embedded, embedding just the one query.
     """
     embedder = embedder or _default_embedder(config)
-    embed_facts(backend, config, embedder=embedder)
+    if ensure_embedded:
+        embed_facts(backend, config, embedder=embedder)
     query_vector = embedder([query])[0]
     return backend.search_facts(query_vector, k, config.embedding_model.name)
