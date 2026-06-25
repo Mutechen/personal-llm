@@ -47,6 +47,20 @@ def test_growth_log_content(tmp_path: Path):
     assert "## Graded" in log
     assert "Active facts" in log
     assert "Transcript learning disabled" in log
+    assert "Corroborated (cross-session)" in log
+
+
+def test_growth_log_reports_corroboration(tmp_path: Path):
+    vault = _vault(tmp_path, llm_grading=False)
+    backend = open_backend(vault)
+    backend.append_fact("the user runs Linux", "transcript:s1")
+    backend.append_fact("the user runs Linux", "transcript:s2")  # corroborates
+
+    report = run_once(vault)
+    assert report.corroborated_facts == 1
+    assert "Corroborated (cross-session): **1**" in report.growth_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_sleep_is_idempotent_on_facts(tmp_path: Path):

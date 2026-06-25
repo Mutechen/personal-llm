@@ -117,6 +117,14 @@ def test_merge_carries_corroboration_onto_canonical(backend: MemoryBackend):
     assert active[0]["confidence"] == "corroborated"
 
 
+def test_count_corroborated(backend: MemoryBackend):
+    backend.append_fact("solo fact", "transcript:s1")
+    assert backend.count_corroborated() == 0
+    backend.append_fact("shared fact", "transcript:s1")
+    backend.append_fact("shared fact", "transcript:s2")  # promotes
+    assert backend.count_corroborated() == 1
+
+
 def test_recent_facts_respects_limit_and_order(backend: MemoryBackend):
     for i in range(5):
         backend.append_fact(f"fact {i}", "transcript:s1")

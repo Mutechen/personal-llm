@@ -71,6 +71,14 @@ class MemoryBackend(Protocol):
         """
         ...
 
+    def count_corroborated(self) -> int:
+        """Return how many active facts carry `corroborated` certainty.
+
+        A before/after delta over a sleep cycle is how the growth log reports
+        newly promoted facts.
+        """
+        ...
+
     def facts_for_grading(self) -> list[dict]:
         """Return all `active` facts (with `id`) for the consolidation pass.
 

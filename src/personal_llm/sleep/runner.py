@@ -38,6 +38,8 @@ class SleepReport:
     dedup: DedupResult | None = None
     model_skipped: bool = False
     active_facts: int = 0
+    corroborated_facts: int = 0
+    corroborated_new: int = 0  # promoted to `corroborated` this cycle
     turn_counts: dict[str, int] | None = None
 
 
@@ -65,6 +67,10 @@ def run_once(vault_path: Path) -> SleepReport:
     wants_model = config.sleep.learn_from_transcripts or config.sleep.llm_grading
     model_up = _model_available(config) if wants_model else False
 
+    # Snapshot certainty before consolidation so the log can report this cycle's
+    # promotions; corroboration accrues inside learn (re-assertion) and dedup (merge).
+    corroborated_before = backend.count_corroborated()
+
     if config.sleep.learn_from_transcripts and model_up:
         source = (
             Path(config.sleep.transcript_source)
@@ -86,6 +92,8 @@ def run_once(vault_path: Path) -> SleepReport:
 
     report.turn_counts = backend.turn_counts_for_today()
     report.active_facts = len(backend.facts_for_grading())
+    report.corroborated_facts = backend.count_corroborated()
+    report.corroborated_new = max(0, report.corroborated_facts - corroborated_before)
 
     growth_path = vault_path / "growth" / f"{today}.md"
     growth_path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,6 +139,8 @@ def _render(report: SleepReport) -> str:
         "",
         "## State",
         f"- Active facts: **{report.active_facts}**",
+        f"- Corroborated (cross-session): **{report.corroborated_facts}** "
+        f"(+{report.corroborated_new} this cycle)",
         f"- Chat sessions today: **{counts['sessions']}** · "
         f"turns: **{counts['turns']}**",
         "",

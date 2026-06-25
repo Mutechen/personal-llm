@@ -191,6 +191,14 @@ class SqliteBackend:
             for text, volatility, confidence, corroboration in rows
         ]
 
+    def count_corroborated(self) -> int:
+        """Number of active facts promoted to `corroborated` certainty."""
+        (n,) = self.conn.execute(
+            "SELECT COUNT(*) FROM facts WHERE status = 'active' AND confidence = ?",
+            (CONFIDENCE_CORROBORATED,),
+        ).fetchone()
+        return n
+
     def facts_for_grading(self) -> list[dict]:
         """Return all `active` facts with the fields the grading pass needs.
 
