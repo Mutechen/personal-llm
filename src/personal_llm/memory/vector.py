@@ -53,3 +53,41 @@ def cosine_topk(
     ids = [cid for cid, _ in candidates]
     order = np.argsort(-scores)[:k]
     return [(ids[i], float(scores[i])) for i in order]
+
+
+def cosine_clusters(vectors: list[Sequence[float]], threshold: float) -> list[list[int]]:
+    """Group vector indices into connected components by cosine similarity.
+
+    Two vectors are linked when their cosine is >= `threshold`; clusters are the
+    connected components of that graph. Returns only components of size >= 2
+    (singletons need no dedup). The full NxN similarity is computed at once
+    (vectorized) — fine well past the file-based regime's ~10k-vector ceiling.
+    """
+    n = len(vectors)
+    if n < 2:
+        return []
+
+    matrix = np.asarray(vectors, dtype=np.float32)
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        unit = matrix / norms
+    unit = np.nan_to_num(unit, nan=0.0)  # zero-norm rows -> all-zero, similarity 0
+    sim = unit @ unit.T
+
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if sim[i, j] >= threshold:
+                parent[find(i)] = find(j)
+
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    return [g for g in groups.values() if len(g) >= 2]

@@ -91,6 +91,14 @@ class MemoryBackend(Protocol):
         """
         ...
 
+    def facts_with_embeddings(self, model: str) -> list[dict]:
+        """Return active facts that have an embedding for `model`.
+
+        Each is `{id, text, vector}` with the vector unpacked to a list of
+        floats — the input to embedding-based dedup clustering.
+        """
+        ...
+
     def count_corroborated(self) -> int:
         """Return how many active facts carry `corroborated` certainty.
 

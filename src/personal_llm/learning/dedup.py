@@ -3,15 +3,17 @@
 Distillation produced the same fact phrased many ways, and stale values that a
 newer fact replaces. G3 collapses them:
 
-- **Cluster** active facts by lexical overlap (cheap Jaccard, no embeddings — the
-  vector store is a later chunk). Only multi-fact clusters are examined.
+- **Cluster** active facts by embedding cosine similarity (the L4 vector layer);
+  facts close in meaning group together even when worded differently. Only
+  multi-fact clusters are examined.
 - **Judge** each cluster with the local model, which returns `[loser, keeper]`
   relations: a `merge` (the loser is a duplicate of the keeper) or a `supersede`
   (the loser is an outdated version of the keeper).
 
 Nothing is deleted — losers become `merged`/`superseded` and point at their
 keeper. Idempotent: consolidated facts leave the active set, so a re-run with no
-new duplicates is a no-op.
+new duplicates is a no-op. Clustering reads embeddings already in the store, so
+callers embed first (the sleep loop and the `dedup` CLI both do).
 """
 
 from __future__ import annotations
@@ -22,21 +24,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from personal_llm.config import VaultConfig
+from personal_llm.config import EmbeddingModelConfig, VaultConfig
 from personal_llm.memory import MemoryBackend
+from personal_llm.memory.vector import cosine_clusters
 
-DEFAULT_THRESHOLD = 0.5
-
-# Boilerplate that every distilled fact shares ("The user...") — stripped before
-# similarity so it doesn't inflate overlap.
-_STOPWORDS = frozenset(
-    """a an the this that these those and or but to of in on for with at by from as is are
-    was were be been being has have had do does did will would can could should may might
-    their them they it its he she his her you your we our us i my me user users system also
-    including such over more most into out up down""".split()
-)
-
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Cosine similarity above which two facts are considered the same cluster.
+# Embedding cosine for merely related sentences already sits high, so this is
+# tuned for near-duplicates: a sweep over ~470 real facts showed <=0.80 collapses
+# into one giant blob (everything "about the user" is loosely similar) while 0.85
+# yields small, coherent near-duplicate clusters. The LLM judge is the real
+# filter within a cluster. (Tuning remains an open question in FACT_GRADING.md.)
+DEFAULT_THRESHOLD = 0.85
 
 # Returns merge/supersede relations as [loser, keeper] 1-based index pairs.
 ClusterJudge = Callable[[list[str]], dict[str, list[list[int]]]]
@@ -62,40 +60,14 @@ class _Completer(Protocol):
     def complete(self, messages: list[dict[str, str]]) -> str: ...
 
 
-def normalize_tokens(text: str) -> frozenset[str]:
-    return frozenset(t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS)
-
-
-def jaccard(a: frozenset[str], b: frozenset[str]) -> float:
-    if not a or not b:
-        return 0.0
-    return len(a & b) / len(a | b)
-
-
 def cluster_facts(facts: list[dict], threshold: float) -> list[list[dict]]:
-    """Group facts into connected components where pairwise Jaccard >= threshold.
+    """Group facts by embedding cosine similarity (>= threshold).
 
-    Returns only clusters with >= 2 facts (singletons need no consolidation).
+    Each fact must carry a `vector` (see `facts_with_embeddings`). Returns only
+    clusters with >= 2 facts (singletons need no consolidation).
     """
-    tokens = [normalize_tokens(f["text"]) for f in facts]
-    n = len(facts)
-    parent = list(range(n))
-
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            if jaccard(tokens[i], tokens[j]) >= threshold:
-                parent[find(i)] = find(j)
-
-    groups: dict[int, list[dict]] = {}
-    for i, fact in enumerate(facts):
-        groups.setdefault(find(i), []).append(fact)
-    return [g for g in groups.values() if len(g) >= 2]
+    components = cosine_clusters([f["vector"] for f in facts], threshold)
+    return [[facts[i] for i in component] for component in components]
 
 
 def parse_relations(raw: str, n: int) -> dict[str, list[list[int]]]:
@@ -164,13 +136,15 @@ def dedup_facts(
     dry_run: bool = False,
     judge: ClusterJudge | None = None,
 ) -> DedupResult:
-    """Cluster active facts and apply the local model's merge/supersede decisions."""
+    """Cluster active facts by embedding and apply the model's merge/supersede
+    decisions. Reads embeddings already in the store — callers embed first."""
     if judge is None:
         if config is None:
             raise ValueError("dedup_facts needs a config or an injected judge")
         judge = _default_judge(config)
 
-    facts = backend.facts_for_grading()
+    model = config.embedding_model.name if config else EmbeddingModelConfig().name
+    facts = backend.facts_with_embeddings(model)
     result = DedupResult(facts_seen=len(facts), dry_run=dry_run)
 
     for cluster in cluster_facts(facts, threshold):

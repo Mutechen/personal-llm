@@ -89,18 +89,20 @@ def run_once(vault_path: Path) -> SleepReport:
 
     if config.sleep.llm_grading and model_up:
         report.g2 = grade_facts_llm(backend, config)
-        report.dedup = dedup_facts(backend, config)
 
-    if wants_model and not model_up:
-        report.model_skipped = True
-
-    # Keep fact embeddings current so semantic recall sees the night's changes.
-    # Same switch as the other model-powered steps (`llm_grading`), but gated on
-    # the embedding model's own availability — it's a different model than chat.
+    # Embeddings power both semantic recall and dedup clustering, so compute them
+    # before dedup. Gated on the embedding model's own availability (a different
+    # model than chat); dedup degrades to no-op clustering if it's unavailable.
     if config.sleep.llm_grading and _model_available(
         config.embedding_model.name, config.embedding_model.endpoint
     ):
         report.facts_embedded = embed_facts(backend, config).facts_embedded
+
+    if config.sleep.llm_grading and model_up:
+        report.dedup = dedup_facts(backend, config)
+
+    if wants_model and not model_up:
+        report.model_skipped = True
 
     report.turn_counts = backend.turn_counts_for_today()
     report.active_facts = len(backend.facts_for_grading())

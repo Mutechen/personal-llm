@@ -67,8 +67,8 @@ and override any grade; the grade is a proposal, not a verdict.
 2. **Heuristic pre-filter** (deterministic, no LLM). Obvious ephemerals by pattern — load
    average, temperature, byte/line counts, "currently/now running", bare timestamps-as-state
    → mark `ephemeral`/`expired`. Cheap, and it clears the worst noise before any model call.
-3. **Cluster** for dedup: group by lexical similarity / shared subject (cheap token overlap
-   first; embeddings later, ties to the deferred `sqlite-vss` chunk).
+3. **Cluster** for dedup: group by embedding cosine similarity (the L4 vector layer), so
+   facts close in meaning group even when worded differently.
 4. **LLM grade** (local model, batched). One structured call per fact-or-cluster returns
    `{volatility, certainty_hint, canonical_text, subject, supersedes_id?}`.
 5. **Apply.** Update axis columns; merge dups (one canonical row + source refs, bump
@@ -107,11 +107,12 @@ raw dump.
   bucket and catches what patterns miss; `grade_method='llm'` makes it idempotent over G1.
   `personal-llm grade --llm`. Scope is volatility only; certainty stays at G4 (corroboration
   is a better signal than a single-transcript guess). `learning/llm_grading.py`.
-- **G3 — semantic dedup + supersession (built).** Lexical Jaccard clustering (no embeddings
-  yet) feeds a per-cluster local-model judge that returns `[loser, keeper]` merge/supersede
-  relations; losers become `merged`/`superseded` pointing at their keeper (`canonical_id` /
-  `superseded_by`), never deleted. Idempotent. `personal-llm dedup [--threshold]`.
-  `learning/dedup.py`. Embedding-based clustering arrives with the sqlite-vss chunk.
+- **G3 — semantic dedup + supersession (built).** Embedding-cosine clustering (the L4 vector
+  layer, `memory/vector.py`) feeds a per-cluster local-model judge that returns
+  `[loser, keeper]` merge/supersede relations; losers become `merged`/`superseded` pointing at
+  their keeper (`canonical_id` / `superseded_by`), never deleted. Clustering reads embeddings
+  already in the store, so callers embed first (the sleep loop and the CLI both do). Idempotent.
+  `personal-llm dedup [--threshold]` (default cosine 0.85, tuned on real facts). `learning/dedup.py`.
 - **G4 — retrieval weighting + corroboration certainty (built).** Retrieval:
   `recall_facts()` surfaces active facts most-durable-first (static -> slow -> volatile),
   then by corroboration, into the agent's instructions, so `ask`/`chat` start already knowing
@@ -130,7 +131,9 @@ raw dump.
 
 - TTL values per bucket — need tuning against observed decay (how long is "Phase 1" true?).
 - Subject extraction for clustering — model-derived vs. heuristic noun-phrase.
-- Merge aggressiveness — false-merge risk; conservative threshold + keep both on doubt.
+- Merge aggressiveness — false-merge risk; conservative cosine threshold (0.85, tuned on
+  ~470 real facts) + the LLM judge as the in-cluster filter; keep both on doubt.
 - Resurrection rule — when does a re-asserted expired fact update `valid_as_of` vs. spawn new?
-- Embedding model for semantic dedup — choice and the 6 GB VRAM budget (ties to sqlite-vss).
+- Embedding model — `nomic-embed-text` (768-dim) chosen; fits the 6 GB VRAM budget. Revisit
+  if a better small local embedder appears.
 - Where grading runs — its own `personal-llm grade` command, or only inside `sleep`?

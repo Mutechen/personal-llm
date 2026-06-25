@@ -346,8 +346,8 @@ def grade(
 def dedup(
     threshold: Annotated[
         float,
-        typer.Option("--threshold", help="Lexical similarity to cluster (0-1)."),
-    ] = 0.5,
+        typer.Option("--threshold", help="Embedding cosine to cluster (0-1)."),
+    ] = 0.85,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Show merges/supersessions without writing."),
@@ -359,7 +359,7 @@ def dedup(
 ) -> None:
     """Consolidate facts: merge duplicates, supersede outdated ones (G3).
 
-    Clusters active facts by lexical overlap, then the local model decides
+    Clusters active facts by embedding similarity, then the local model decides
     merges/supersessions. Reversible — losers are demoted, never deleted.
     """
     vault_path = vault_mod.resolve_vault_path(vault)
@@ -367,13 +367,24 @@ def dedup(
         console.print(f"[red]No vault at {vault_path}.[/red]")
         raise typer.Exit(1)
 
+    from personal_llm.inference.local import LocalModelClient
     from personal_llm.learning.dedup import dedup_facts
+    from personal_llm.learning.embeddings import embed_facts
     from personal_llm.memory import open_backend
 
     cfg = config_mod.load(vault_path)
-    result = dedup_facts(
-        open_backend(vault_path), cfg, threshold=threshold, dry_run=dry_run
-    )
+    backend = open_backend(vault_path)
+
+    # Clustering reads embeddings from the store, so make sure they exist first.
+    ok, msg = LocalModelClient(
+        cfg.embedding_model.name, cfg.embedding_model.endpoint
+    ).health()
+    if not ok:
+        console.print(f"[red]{msg}[/red]")
+        raise typer.Exit(1)
+    embed_facts(backend, cfg)
+
+    result = dedup_facts(backend, cfg, threshold=threshold, dry_run=dry_run)
 
     for change in result.changes:
         verb = "merge" if change.kind == "merge" else "supersede"

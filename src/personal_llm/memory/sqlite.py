@@ -262,6 +262,26 @@ class SqliteBackend:
         }
         return [by_id[fid] for fid, _ in ranked]
 
+    def facts_with_embeddings(self, model: str) -> list[dict]:
+        """Active facts that have an embedding for `model`, vectors unpacked.
+
+        The input to embedding-based dedup clustering: `[{id, text, vector}]`,
+        ordered by id. Facts not yet embedded are simply absent (they cluster on
+        a later run, once embedded).
+        """
+        from personal_llm.memory.vector import unpack
+
+        rows = self.conn.execute(
+            "SELECT f.id, f.text, e.vector FROM facts f "
+            "JOIN fact_embeddings e ON e.fact_id = f.id AND e.model = ? "
+            "WHERE f.status = 'active' ORDER BY f.id",
+            (model,),
+        ).fetchall()
+        return [
+            {"id": fid, "text": text, "vector": unpack(blob).tolist()}
+            for fid, text, blob in rows
+        ]
+
     def count_corroborated(self) -> int:
         """Number of active facts promoted to `corroborated` certainty."""
         (n,) = self.conn.execute(

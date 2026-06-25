@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from personal_llm.memory.vector import cosine_topk, pack, unpack
+from personal_llm.memory.vector import cosine_clusters, cosine_topk, pack, unpack
 
 
 def test_pack_unpack_roundtrip():
@@ -38,3 +38,23 @@ def test_cosine_topk_handles_zero_norm():
     ranked = cosine_topk([1.0, 0.0], cands, k=2)
     assert dict(ranked)[1] == 0.0
     assert cosine_topk([0.0, 0.0], cands, k=2) == []
+
+
+def test_cosine_clusters_groups_transitively():
+    # 0~1 and 1~2 link transitively into one component; 3 stays a singleton.
+    vectors = [[1.0, 0.0], [0.95, 0.31], [0.85, 0.53], [0.0, 1.0]]
+    clusters = cosine_clusters(vectors, threshold=0.8)
+    assert len(clusters) == 1
+    assert set(clusters[0]) == {0, 1, 2}
+
+
+def test_cosine_clusters_separates_distinct_groups():
+    vectors = [[1.0, 0.0], [1.0, 0.0], [0.0, 1.0], [0.0, 1.0]]
+    clusters = sorted(cosine_clusters(vectors, threshold=0.9), key=min)
+    assert [set(c) for c in clusters] == [{0, 1}, {2, 3}]
+
+
+def test_cosine_clusters_no_links_or_too_few():
+    assert cosine_clusters([[1.0, 0.0], [0.0, 1.0]], threshold=0.9) == []
+    assert cosine_clusters([[1.0, 0.0]], threshold=0.5) == []
+    assert cosine_clusters([], threshold=0.5) == []
