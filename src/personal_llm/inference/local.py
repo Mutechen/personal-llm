@@ -29,7 +29,12 @@ class LocalModelClient:
         except Exception as e:
             return False, f"Cannot reach Ollama at {self.endpoint}: {e}"
         names = {m.get("name") or m.get("model") for m in (tags.get("models") or [])}
-        if self.model_name not in names:
+        # Ollama lists a bare-name model under its `:latest` tag, so a config
+        # value of `nomic-embed-text` must match a listed `nomic-embed-text:latest`.
+        candidates = {self.model_name}
+        if ":" not in self.model_name:
+            candidates.add(f"{self.model_name}:latest")
+        if names.isdisjoint(candidates):
             return False, (
                 f"Model {self.model_name!r} not found in Ollama. "
                 f"Pull it with: ollama pull {self.model_name}"
