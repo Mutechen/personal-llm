@@ -71,7 +71,7 @@ L1  Base model ("genes")       Qwen 3 8B local · Hermes 36B cloud
 | **Skill format** | **`SKILL.md`** — Anthropic Agent Skills open standard. Not our own custom manifest. |
 | **External tool protocol** | **MCP** (Model Context Protocol). Agent is an MCP client; no bespoke tool wrappers. |
 | **Adapter format** | HuggingFace PEFT `adapter_config.json`. Cross-tool loadable. |
-| **Vector store** | File-based (markdown grep + sqlite-vss) until >10k chunks. Qdrant only after. |
+| **Vector store** | File-based until >10k chunks, then a real index. First cut: brute-force cosine over float32 blobs in SQLite (`memory/vector.py`) — lighter than sqlite-vss, no C extension on exFAT. Upgrade ladder: brute-force -> sqlite-vec (maintained successor to sqlite-vss) -> Qdrant. |
 | **Search backend** | Self-hosted SearXNG (Docker sidecar in Phase 1). |
 | **Default autonomous learning budget** | $0.50/day. Configurable. |
 | **Lobe verification (v1)** | Hash-only (SHA-256). Signing scheme is Phase 3+. |

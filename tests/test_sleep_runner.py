@@ -48,6 +48,7 @@ def test_growth_log_content(tmp_path: Path):
     assert "Active facts" in log
     assert "Transcript learning disabled" in log
     assert "Corroborated (cross-session)" in log
+    assert "Facts embedded this cycle" in log
 
 
 def test_growth_log_reports_corroboration(tmp_path: Path):

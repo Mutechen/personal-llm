@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS facts (
     corroboration INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS fact_embeddings (
+    fact_id INTEGER PRIMARY KEY,
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    vector BLOB NOT NULL
+);
 """
 
 # Columns added after the facts table first shipped. Existing vaults get them
@@ -190,6 +197,70 @@ class SqliteBackend:
             }
             for text, volatility, confidence, corroboration in rows
         ]
+
+    def facts_needing_embedding(self, model: str) -> list[dict]:
+        """Active facts with no embedding for `model` (id + text, oldest first).
+
+        Re-embedding after a model change is automatic: a row embedded under a
+        different model name is treated as missing, so the new model's vectors
+        replace it on the next compute.
+        """
+        rows = self.conn.execute(
+            "SELECT f.id, f.text FROM facts f "
+            "LEFT JOIN fact_embeddings e ON e.fact_id = f.id AND e.model = ? "
+            "WHERE f.status = 'active' AND e.fact_id IS NULL ORDER BY f.id",
+            (model,),
+        ).fetchall()
+        return [{"id": fid, "text": text} for fid, text in rows]
+
+    def store_fact_embedding(self, fact_id: int, model: str, vector: list[float]) -> None:
+        """Persist (replacing any prior) the embedding for one fact."""
+        from personal_llm.memory.vector import pack
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO fact_embeddings (fact_id, model, dim, vector) "
+            "VALUES (?, ?, ?, ?)",
+            (fact_id, model, len(vector), pack(vector)),
+        )
+        self.conn.commit()
+
+    def search_facts(self, query_vector: list[float], k: int, model: str) -> list[dict]:
+        """Return the `k` active facts most similar to `query_vector`, best first.
+
+        Brute-force cosine over stored float32 blobs (see memory/vector.py); only
+        embeddings for `model` are considered. Each result carries `text`,
+        `volatility`, `confidence`, `corroboration`, and the cosine `score`.
+        """
+        from personal_llm.memory.vector import cosine_topk
+
+        rows = self.conn.execute(
+            "SELECT e.fact_id, e.vector FROM fact_embeddings e "
+            "JOIN facts f ON f.id = e.fact_id "
+            "WHERE f.status = 'active' AND e.model = ?",
+            (model,),
+        ).fetchall()
+        ranked = cosine_topk(query_vector, [(fid, blob) for fid, blob in rows], k)
+        if not ranked:
+            return []
+
+        scores = dict(ranked)
+        placeholders = ",".join("?" * len(scores))
+        meta = self.conn.execute(
+            f"SELECT id, text, volatility, confidence, corroboration FROM facts "
+            f"WHERE id IN ({placeholders})",
+            tuple(scores),
+        ).fetchall()
+        by_id = {
+            fid: {
+                "text": text,
+                "volatility": volatility,
+                "confidence": confidence,
+                "corroboration": corroboration,
+                "score": scores[fid],
+            }
+            for fid, text, volatility, confidence, corroboration in meta
+        }
+        return [by_id[fid] for fid, _ in ranked]
 
     def count_corroborated(self) -> int:
         """Number of active facts promoted to `corroborated` certainty."""

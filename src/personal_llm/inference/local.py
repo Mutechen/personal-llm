@@ -44,6 +44,18 @@ class LocalModelClient:
             if piece:
                 yield piece
 
+    def embed(self, inputs: list[str]) -> list[list[float]]:
+        """Return one embedding vector per input string (batched in one call).
+
+        Used by the semantic-search layer. The model is whatever this client was
+        constructed with, so callers point it at the embedding model, not the
+        chat model.
+        """
+        if not inputs:
+            return []
+        resp = self._client.embed(model=self.model_name, input=inputs)
+        return [list(v) for v in (resp.get("embeddings") or [])]
+
     def complete(self, messages: list[dict[str, str]]) -> str:
         """Return the full model response as one string (non-streaming).
 

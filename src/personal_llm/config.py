@@ -23,6 +23,18 @@ class LocalModelConfig(BaseModel):
     endpoint: str = "http://localhost:11434"
 
 
+class EmbeddingModelConfig(BaseModel):
+    """The local model used to embed text for semantic search.
+
+    Separate from the chat model: embeddings want a small, fast, dedicated model
+    (default `nomic-embed-text`, 768-dim) rather than the general chat model.
+    """
+
+    backend: Literal["ollama"] = "ollama"
+    name: str = "nomic-embed-text"
+    endpoint: str = "http://localhost:11434"
+
+
 class CloudConfig(BaseModel):
     """Cloud spending caps and tutor registry placeholders.
 
@@ -60,7 +72,7 @@ class SleepConfig(BaseModel):
 
     learn_from_transcripts: bool = False
     transcript_source: str | None = None  # defaults to ~/.claude/projects when enabled
-    llm_grading: bool = True  # run G2/G3 in sleep (needs the local model)
+    llm_grading: bool = True  # run G2/G3 + fact embeddings in sleep (needs local models)
 
 
 class VaultConfig(BaseModel):
@@ -68,6 +80,7 @@ class VaultConfig(BaseModel):
 
     vault_version: int = VAULT_VERSION
     local_model: LocalModelConfig = Field(default_factory=LocalModelConfig)
+    embedding_model: EmbeddingModelConfig = Field(default_factory=EmbeddingModelConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
     redaction: RedactionConfig = Field(default_factory=RedactionConfig)
     sleep: SleepConfig = Field(default_factory=SleepConfig)

@@ -117,6 +117,46 @@ def test_merge_carries_corroboration_onto_canonical(backend: MemoryBackend):
     assert active[0]["confidence"] == "corroborated"
 
 
+def test_embedding_store_and_needing(backend: MemoryBackend):
+    backend.append_fact("fact one", "transcript:s1")
+    backend.append_fact("fact two", "transcript:s1")
+    ids = {f["text"]: f["id"] for f in backend.facts_for_grading()}
+
+    assert {f["text"] for f in backend.facts_needing_embedding("m1")} == {
+        "fact one",
+        "fact two",
+    }
+    backend.store_fact_embedding(ids["fact one"], "m1", [1.0, 0.0])
+    assert [f["text"] for f in backend.facts_needing_embedding("m1")] == ["fact two"]
+    # A different model name treats the fact as un-embedded (triggers re-embed).
+    assert len(backend.facts_needing_embedding("m2")) == 2
+
+
+def test_search_facts_returns_nearest(backend: MemoryBackend):
+    backend.append_fact("loves python", "transcript:s1")
+    backend.append_fact("hates mornings", "transcript:s1")
+    ids = {f["text"]: f["id"] for f in backend.facts_for_grading()}
+    backend.store_fact_embedding(ids["loves python"], "m1", [1.0, 0.0])
+    backend.store_fact_embedding(ids["hates mornings"], "m1", [0.0, 1.0])
+
+    results = backend.search_facts([1.0, 0.0], k=2, model="m1")
+    assert [r["text"] for r in results] == ["loves python", "hates mornings"]
+    assert results[0]["score"] > results[1]["score"]
+
+
+def test_search_facts_skips_inactive_and_other_models(backend: MemoryBackend):
+    backend.append_fact("kept fact", "transcript:s1")
+    backend.append_fact("merged fact", "transcript:s1")
+    ids = {f["text"]: f["id"] for f in backend.facts_for_grading()}
+    backend.store_fact_embedding(ids["kept fact"], "m1", [1.0, 0.0])
+    backend.store_fact_embedding(ids["merged fact"], "m1", [1.0, 0.0])
+    backend.merge_fact(ids["merged fact"], ids["kept fact"])
+
+    results = backend.search_facts([1.0, 0.0], k=5, model="m1")
+    assert [r["text"] for r in results] == ["kept fact"]
+    assert backend.search_facts([1.0, 0.0], k=5, model="other") == []
+
+
 def test_count_corroborated(backend: MemoryBackend):
     backend.append_fact("solo fact", "transcript:s1")
     assert backend.count_corroborated() == 0

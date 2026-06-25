@@ -170,7 +170,7 @@ Two-tier system: *hot, structured agent state* (an own-built SQLite recall store
 - **Conversation recall** — every chat turn is written to a per-vault SQLite database (`<vault>/data/memory.db`, one `turns` table). At session start the most recent turns are recalled and folded into the agent's instructions, so it continues where prior sessions left off.
 - **`MemoryBackend` protocol** — the L4 swap seam. Exactly one production implementation at a time (`SqliteBackend`); the protocol keeps the layer pluggable without the project maintaining parallel backends.
 - **Identity** — `identity.md` is loaded as the agent's persona each session. Only the user writes it; the agent never does.
-- **Archival / semantic memory** (later phase): `sqlite-vss` over a local embedding model, so older turns surface by meaning, not just recency. Deferred until recall-only proves insufficient.
+- **Semantic memory** — curated facts are embedded with a local model (`nomic-embed-text`) and searched by meaning (`personal-llm recall`). First cut is brute-force cosine over float32 blobs in SQLite (`memory/vector.py`), kept current by the nightly loop. Meaning-based search over older *turns* (archival) and a document/book corpus build on the same layer next.
 - **Self-curating memory** is something the project grows into — the sleep-time loop consolidates and summarises history into the store. Built incrementally, not bought off-the-shelf.
 
 (Letta was the original choice for this tier. An L-0 spike found current Letta is a hosted-server product — ~70 dependencies including Temporal, ClickHouse, and gRPC — not an embeddable library, so it was dropped. See [PRIOR_ART.md](PRIOR_ART.md).)
@@ -193,7 +193,7 @@ Given Mutechen's Shariah-compliant remit and the Islamic Encyclopedia focus, **t
 - `wiki/index/by-topic/` — topic-organized table of contents.
 - The user opens the vault in Obsidian and sees the agent's thinking visually (graph view, backlinks).
 
-**Vector store: deferred until needed.** Phase 0–1 ships with **file-based search only** — markdown grep + sqlite-vss (single library, no separate service) for embeddings over wiki and recall. AutoGPT learned the hard way that small-scale agents rarely generate enough distinct facts to need a real vector DB; we skip that mistake. **Upgrade trigger**: when wiki + archival > ~10k chunks AND grep/sqlite-vss latency exceeds ~200ms. Then spin up Qdrant as a local single-binary service.
+**Vector store: brute-force first, real index only when it hurts.** The principle is unchanged — small-scale agents rarely generate enough distinct facts to need a real vector DB (AutoGPT learned this the hard way). The first cut undershoots even sqlite-vss: embeddings are float32 blobs in SQLite, searched by brute-force cosine in numpy (`memory/vector.py`). At a few hundred-to-thousand vectors this is sub-millisecond and avoids a loadable C extension on exFAT. **Upgrade trigger**: when embedded chunks (facts + wiki + archival + ingested docs) exceed ~10k AND brute-force latency exceeds ~200ms, move to **sqlite-vec** (the maintained successor to sqlite-vss, single library, no service); spin up Qdrant only past that.
 
 **Knowledge graph layer: deferred to Phase 3+.** Once `wiki/` exceeds ~1000 pages, evaluate LightRAG or GraphRAG for higher-order reasoning across the corpus.
 

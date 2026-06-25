@@ -21,6 +21,7 @@ from pathlib import Path
 
 from personal_llm import config as config_mod
 from personal_llm.learning.dedup import DedupResult, dedup_facts
+from personal_llm.learning.embeddings import embed_facts
 from personal_llm.learning.grading import GradeResult, grade_facts
 from personal_llm.learning.llm_grading import grade_facts_llm
 from personal_llm.learning.runner import learn_from_transcripts
@@ -40,15 +41,14 @@ class SleepReport:
     active_facts: int = 0
     corroborated_facts: int = 0
     corroborated_new: int = 0  # promoted to `corroborated` this cycle
+    facts_embedded: int = 0  # embeddings computed this cycle
     turn_counts: dict[str, int] | None = None
 
 
-def _model_available(config: config_mod.VaultConfig) -> bool:
+def _model_available(name: str, endpoint: str) -> bool:
     from personal_llm.inference.local import LocalModelClient
 
-    ok, _ = LocalModelClient(
-        config.local_model.name, config.local_model.endpoint
-    ).health()
+    ok, _ = LocalModelClient(name, endpoint).health()
     return ok
 
 
@@ -65,7 +65,11 @@ def run_once(vault_path: Path) -> SleepReport:
     # if it's down (a real possibility for a 3am cron), those steps skip and only
     # the deterministic G1 grade runs.
     wants_model = config.sleep.learn_from_transcripts or config.sleep.llm_grading
-    model_up = _model_available(config) if wants_model else False
+    model_up = (
+        _model_available(config.local_model.name, config.local_model.endpoint)
+        if wants_model
+        else False
+    )
 
     # Snapshot certainty before consolidation so the log can report this cycle's
     # promotions; corroboration accrues inside learn (re-assertion) and dedup (merge).
@@ -89,6 +93,14 @@ def run_once(vault_path: Path) -> SleepReport:
 
     if wants_model and not model_up:
         report.model_skipped = True
+
+    # Keep fact embeddings current so semantic recall sees the night's changes.
+    # Same switch as the other model-powered steps (`llm_grading`), but gated on
+    # the embedding model's own availability — it's a different model than chat.
+    if config.sleep.llm_grading and _model_available(
+        config.embedding_model.name, config.embedding_model.endpoint
+    ):
+        report.facts_embedded = embed_facts(backend, config).facts_embedded
 
     report.turn_counts = backend.turn_counts_for_today()
     report.active_facts = len(backend.facts_for_grading())
@@ -141,6 +153,7 @@ def _render(report: SleepReport) -> str:
         f"- Active facts: **{report.active_facts}**",
         f"- Corroborated (cross-session): **{report.corroborated_facts}** "
         f"(+{report.corroborated_new} this cycle)",
+        f"- Facts embedded this cycle: **{report.facts_embedded}**",
         f"- Chat sessions today: **{counts['sessions']}** · "
         f"turns: **{counts['turns']}**",
         "",

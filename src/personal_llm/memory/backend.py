@@ -71,6 +71,26 @@ class MemoryBackend(Protocol):
         """
         ...
 
+    def facts_needing_embedding(self, model: str) -> list[dict]:
+        """Return active facts lacking an embedding for `model` (id + text).
+
+        A fact embedded under a different model name counts as missing, so a
+        model change triggers a re-embed.
+        """
+        ...
+
+    def store_fact_embedding(self, fact_id: int, model: str, vector: list[float]) -> None:
+        """Persist (replacing any prior) one fact's embedding vector."""
+        ...
+
+    def search_facts(self, query_vector: list[float], k: int, model: str) -> list[dict]:
+        """Return the `k` active facts most similar to `query_vector`, best first.
+
+        Each result is a dict with `text`, `volatility`, `confidence`,
+        `corroboration`, and a cosine `score`.
+        """
+        ...
+
     def count_corroborated(self) -> int:
         """Return how many active facts carry `corroborated` certainty.
 

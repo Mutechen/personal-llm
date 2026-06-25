@@ -390,6 +390,54 @@ def dedup(
     )
 
 
+# --------------------------------------------------------------------------- recall
+
+
+@app.command()
+def recall(
+    query: Annotated[str, typer.Argument(help="What to search your facts for.")],
+    k: Annotated[
+        int,
+        typer.Option("--k", "-k", help="How many facts to return."),
+    ] = 5,
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """Semantic search over your curated facts (embedding-based).
+
+    Embeds the query with the local embedding model and returns the closest
+    active facts by cosine similarity. Brings any new facts up to date first.
+    """
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(f"[red]No vault at {vault_path}.[/red]")
+        raise typer.Exit(1)
+
+    cfg = config_mod.load(vault_path)
+
+    from personal_llm.inference.local import LocalModelClient
+
+    ok, msg = LocalModelClient(
+        cfg.embedding_model.name, cfg.embedding_model.endpoint
+    ).health()
+    if not ok:
+        console.print(f"[red]{msg}[/red]")
+        raise typer.Exit(1)
+
+    from personal_llm.learning.embeddings import semantic_search
+    from personal_llm.memory import open_backend
+
+    results = semantic_search(open_backend(vault_path), cfg, query, k=k)
+    if not results:
+        console.print("[yellow]No matching facts (is the store empty?).[/yellow]")
+        return
+
+    for r in results:
+        console.print(f"  [green]{r['score']:.2f}[/green]  {r['text']}")
+
+
 # --------------------------------------------------------------------------- ingest
 
 
@@ -449,6 +497,7 @@ def status(
     if vault_mod.exists(vault_path):
         cfg = config_mod.load(vault_path)
         table.add_row("local model", f"{cfg.local_model.name} @ {cfg.local_model.endpoint}")
+        table.add_row("embedding model", cfg.embedding_model.name)
         table.add_row("monthly cap", f"${cfg.cloud.monthly_budget_usd:.2f}")
         table.add_row("autonomy", cfg.cloud.autonomy_mode)
 
