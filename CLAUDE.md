@@ -132,7 +132,7 @@ personal-llm/
 │       ├── agent/           # L6 — smol.py (build_agent + ask + chat_turn, semantic recall) + tools.py
 │       ├── interface/       # L7 — CLI chat REPL (routes through agent/smol.py)
 │       ├── sleep/           # sleep-time runner
-│       └── builtin_skills/  # Phase 1: read_vault_file/ with SKILL.md + tool.py
+│       └── builtin_skills/  # Phase 1: read_vault_file/ + search_library/ (RAG) — SKILL.md + tool.py
 ├── examples/
 │   ├── identities/          # three starter personas (mentor-mode)
 │   └── vault-skeleton/      # what `personal-llm init` copies to scaffold a vault
