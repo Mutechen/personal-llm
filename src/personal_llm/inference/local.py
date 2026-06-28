@@ -11,6 +11,9 @@ from dataclasses import dataclass
 
 import ollama
 
+# Retries for a single input that the embedding server rejects (see `embed`).
+_EMBED_RETRIES = 3
+
 
 @dataclass
 class LocalModelClient:
@@ -50,16 +53,33 @@ class LocalModelClient:
                 yield piece
 
     def embed(self, inputs: list[str]) -> list[list[float]]:
-        """Return one embedding vector per input string (batched in one call).
+        """Return one embedding vector per input string.
 
-        Used by the semantic-search layer. The model is whatever this client was
-        constructed with, so callers point it at the embedding model, not the
-        chat model.
+        Tries the whole list in one call. Some embedding models (notably bge-m3
+        on Ollama) intermittently emit a NaN for one item, which fails the entire
+        batch with a 500. On that error we bisect to isolate the culprit and
+        retry it alone — single items reliably succeed — so a flaky item can't
+        sink a whole batch (or crash the nightly embed step).
+
+        The model is whatever this client was constructed with, so callers point
+        it at the embedding model, not the chat model.
         """
         if not inputs:
             return []
-        resp = self._client.embed(model=self.model_name, input=inputs)
-        return [list(v) for v in (resp.get("embeddings") or [])]
+        try:
+            resp = self._client.embed(model=self.model_name, input=inputs)
+            return [list(v) for v in (resp.get("embeddings") or [])]
+        except ollama.ResponseError:
+            if len(inputs) > 1:
+                mid = len(inputs) // 2
+                return self.embed(inputs[:mid]) + self.embed(inputs[mid:])
+            for _ in range(_EMBED_RETRIES):
+                try:
+                    resp = self._client.embed(model=self.model_name, input=inputs)
+                    return [list(v) for v in (resp.get("embeddings") or [])]
+                except ollama.ResponseError:
+                    continue
+            raise
 
     def complete(self, messages: list[dict[str, str]]) -> str:
         """Return the full model response as one string (non-streaming).

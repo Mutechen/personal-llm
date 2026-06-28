@@ -112,7 +112,8 @@ raw dump.
   `[loser, keeper]` merge/supersede relations; losers become `merged`/`superseded` pointing at
   their keeper (`canonical_id` / `superseded_by`), never deleted. Clustering reads embeddings
   already in the store, so callers embed first (the sleep loop and the CLI both do). Idempotent.
-  `personal-llm dedup [--threshold]` (default cosine 0.85, tuned on real facts). `learning/dedup.py`.
+  `personal-llm dedup [--threshold]` (default cosine 0.75, tuned on real facts for the
+  multilingual default embedder; re-tune if the embedding model changes). `learning/dedup.py`.
 - **G4 — retrieval weighting + corroboration certainty (built).** Retrieval:
   `recall_facts()` surfaces active facts most-durable-first (static -> slow -> volatile),
   then by corroboration, into the agent's instructions, so `ask`/`chat` start already knowing
@@ -131,9 +132,11 @@ raw dump.
 
 - TTL values per bucket — need tuning against observed decay (how long is "Phase 1" true?).
 - Subject extraction for clustering — model-derived vs. heuristic noun-phrase.
-- Merge aggressiveness — false-merge risk; conservative cosine threshold (0.85, tuned on
-  ~470 real facts) + the LLM judge as the in-cluster filter; keep both on doubt.
+- Merge aggressiveness — false-merge risk; cosine threshold (0.75, tuned on ~460 real facts
+  for the default embedder) + the LLM judge as the in-cluster filter; keep both on doubt.
+  The threshold is model-dependent — re-tune when the embedding model changes.
 - Resurrection rule — when does a re-asserted expired fact update `valid_as_of` vs. spawn new?
-- Embedding model — `nomic-embed-text` (768-dim) chosen; fits the 6 GB VRAM budget. Revisit
-  if a better small local embedder appears.
+- Embedding model — `snowflake-arctic-embed2` (1024-dim, multilingual) chosen; fits the 6 GB
+  VRAM budget and validated 0% NaN + 5/5 cross-lingual (EN/AR/FR). bge-m3 has comparable
+  quality but an intermittent NaN bug on Ollama; `nomic-embed-text` is lighter but English-only.
 - Where grading runs — its own `personal-llm grade` command, or only inside `sleep`?

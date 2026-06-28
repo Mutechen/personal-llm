@@ -347,7 +347,7 @@ def dedup(
     threshold: Annotated[
         float,
         typer.Option("--threshold", help="Embedding cosine to cluster (0-1)."),
-    ] = 0.85,
+    ] = 0.75,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Show merges/supersessions without writing."),

@@ -29,12 +29,12 @@ from personal_llm.memory import MemoryBackend
 from personal_llm.memory.vector import cosine_clusters
 
 # Cosine similarity above which two facts are considered the same cluster.
-# Embedding cosine for merely related sentences already sits high, so this is
-# tuned for near-duplicates: a sweep over ~470 real facts showed <=0.80 collapses
-# into one giant blob (everything "about the user" is loosely similar) while 0.85
-# yields small, coherent near-duplicate clusters. The LLM judge is the real
-# filter within a cluster. (Tuning remains an open question in FACT_GRADING.md.)
-DEFAULT_THRESHOLD = 0.85
+# Model-dependent — re-tune when the embedding model changes. Swept over ~460
+# real facts embedded with the default snowflake-arctic-embed2: <=0.65 collapses
+# into a blob, >=0.80 is high-precision but low-recall; 0.75 yields manageable
+# clusters (<=7) that catch real near-duplicates. The LLM judge is the precision
+# filter within a cluster, so clustering leans toward recall.
+DEFAULT_THRESHOLD = 0.75
 
 # Returns merge/supersede relations as [loser, keeper] 1-based index pairs.
 ClusterJudge = Callable[[list[str]], dict[str, list[list[int]]]]

@@ -26,12 +26,17 @@ class LocalModelConfig(BaseModel):
 class EmbeddingModelConfig(BaseModel):
     """The local model used to embed text for semantic search.
 
-    Separate from the chat model: embeddings want a small, fast, dedicated model
-    (default `nomic-embed-text`, 768-dim) rather than the general chat model.
+    Separate from the chat model: embeddings want a small, fast, dedicated model.
+    Default `snowflake-arctic-embed2` (1024-dim, multilingual) — so non-English
+    sources (e.g. Arabic books) are searchable AND a query in one language can
+    retrieve content in another (validated: 5/5 cross-lingual EN/AR/FR, 0% NaN).
+    bge-m3 has comparable quality but an intermittent NaN bug on Ollama;
+    `nomic-embed-text` is lighter but English-only. Changing this re-embeds on
+    the next pass (the embedding store keys on the model name).
     """
 
     backend: Literal["ollama"] = "ollama"
-    name: str = "nomic-embed-text"
+    name: str = "snowflake-arctic-embed2"
     endpoint: str = "http://localhost:11434"
 
 

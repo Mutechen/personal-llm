@@ -72,7 +72,8 @@ def test_semantic_search_no_ensure_skips_backlog(tmp_path: Path):
     # the new fact was never embedded, so it can't surface...
     assert "the user plays guitar" not in [r["text"] for r in results]
     # ...and the call left it un-embedded (no backlog compute happened).
-    assert backend.facts_needing_embedding("nomic-embed-text") == [
+    model = VaultConfig().embedding_model.name
+    assert backend.facts_needing_embedding(model) == [
         {"id": next(f["id"] for f in backend.facts_for_grading() if f["text"] == "the user plays guitar"),
          "text": "the user plays guitar"}
     ]
