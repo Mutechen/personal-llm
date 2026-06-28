@@ -157,6 +157,38 @@ def test_search_facts_skips_inactive_and_other_models(backend: MemoryBackend):
     assert backend.search_facts([1.0, 0.0], k=5, model="other") == []
 
 
+def test_documents_add_list_and_search(backend: MemoryBackend):
+    backend.add_document(
+        "/raw/book.txt", "book", "sha1",
+        ["about cats and kittens", "about dogs and puppies"],
+        [[1.0, 0.0], [0.0, 1.0]], "m1",
+    )
+    assert backend.document_by_sha("sha1")["n_chunks"] == 2
+    assert backend.document_by_sha("missing") is None
+
+    docs = backend.list_documents()
+    assert len(docs) == 1
+    assert docs[0]["title"] == "book"
+
+    results = backend.search_chunks([1.0, 0.0], 2, "m1")
+    assert results[0]["text"] == "about cats and kittens"
+    assert results[0]["title"] == "book"
+    assert results[0]["score"] > results[1]["score"]
+
+
+def test_search_chunks_filters_by_model(backend: MemoryBackend):
+    backend.add_document("/raw/b.txt", "b", "sha1", ["x"], [[1.0, 0.0]], "m1")
+    assert backend.search_chunks([1.0, 0.0], 3, "other") == []
+
+
+def test_delete_document_by_path(backend: MemoryBackend):
+    backend.add_document("/raw/b.txt", "b", "sha1", ["x"], [[1.0, 0.0]], "m1")
+    assert backend.delete_document_by_path("/raw/b.txt") is True
+    assert backend.list_documents() == []
+    assert backend.search_chunks([1.0, 0.0], 3, "m1") == []
+    assert backend.delete_document_by_path("/raw/b.txt") is False  # nothing left
+
+
 def test_count_corroborated(backend: MemoryBackend):
     backend.append_fact("solo fact", "transcript:s1")
     assert backend.count_corroborated() == 0

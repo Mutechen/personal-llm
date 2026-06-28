@@ -454,13 +454,14 @@ def recall(
 
 @app.command()
 def ingest(
-    file: Annotated[Path, typer.Argument(help="File to drop into the vault's raw/.")],
+    file: Annotated[Path, typer.Argument(help="Document to ingest (.txt/.md/.pdf/.epub).")],
     vault: Annotated[
         str | None,
         typer.Option("--vault", "-v", help="Vault path override."),
     ] = None,
 ) -> None:
-    """Copy a file into the vault's raw/ directory (Phase 0: no parsing yet)."""
+    """Ingest a document into the searchable library: copy to raw/, then parse,
+    chunk, and embed it. Idempotent by content — re-ingesting is a no-op."""
     if not file.is_file():
         console.print(f"[red]Not a file:[/red] {file}")
         raise typer.Exit(1)
@@ -470,18 +471,126 @@ def ingest(
         console.print(f"[red]No vault at {vault_path}.[/red]")
         raise typer.Exit(1)
 
+    cfg = config_mod.load(vault_path)
+
+    from personal_llm.inference.local import LocalModelClient
+
+    ok, msg = LocalModelClient(
+        cfg.embedding_model.name, cfg.embedding_model.endpoint
+    ).health()
+    if not ok:
+        console.print(f"[red]{msg}[/red]")
+        raise typer.Exit(1)
+
     raw = vault_path / "raw"
     raw.mkdir(parents=True, exist_ok=True)
     dest = raw / file.name
-    if dest.exists():
-        console.print(f"[yellow]Already in raw/:[/yellow] {dest.name}")
-        raise typer.Exit(0)
+    if not dest.exists():
+        shutil.copy2(file, dest)
 
-    shutil.copy2(file, dest)
-    console.print(f"[green]Ingested[/green] {file.name} → {dest}")
-    console.print(
-        "[dim](Phase 0 just stores the file. Phase 1 parses, embeds, and writes wiki pages.)[/dim]"
-    )
+    from personal_llm.documents.parsers import UnsupportedDocument
+    from personal_llm.documents.pipeline import ingest_document
+    from personal_llm.memory import open_backend
+
+    try:
+        with console.status("[dim]parsing, chunking, embedding…[/dim]", spinner="dots"):
+            result = ingest_document(open_backend(vault_path), cfg, dest)
+    except UnsupportedDocument as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+
+    if result.skipped:
+        console.print(
+            f"[yellow]Already ingested[/yellow] {result.title} "
+            f"({result.chunks} chunks) — content unchanged."
+        )
+    else:
+        tag = " [dim](replaced previous version)[/dim]" if result.replaced else ""
+        console.print(
+            f"[green]Ingested[/green] {result.title}: "
+            f"{result.chunks} chunk(s) embedded{tag}"
+        )
+
+
+# --------------------------------------------------------------------------- books
+
+books_app = typer.Typer(help="Search and list your ingested document library.", no_args_is_help=True)
+app.add_typer(books_app, name="books")
+
+
+@books_app.command("list")
+def books_list(
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """List ingested documents."""
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(f"[red]No vault at {vault_path}.[/red]")
+        raise typer.Exit(1)
+
+    from personal_llm.memory import open_backend
+
+    docs = open_backend(vault_path).list_documents()
+    if not docs:
+        console.print("[dim]No documents ingested yet. Try: personal-llm ingest <file>[/dim]")
+        return
+
+    table = Table(show_header=True, box=None, pad_edge=False)
+    table.add_column("title")
+    table.add_column("chunks", justify="right")
+    table.add_column("ingested", style="dim")
+    for d in docs:
+        table.add_row(d["title"], str(d["n_chunks"]), d["ingested_at"][:10])
+    console.print(table)
+
+
+@books_app.command("search")
+def books_search(
+    query: Annotated[str, typer.Argument(help="What to search the library for.")],
+    k: Annotated[
+        int,
+        typer.Option("--k", "-k", help="How many chunks to return."),
+    ] = 5,
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """Semantic search over ingested document chunks."""
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(f"[red]No vault at {vault_path}.[/red]")
+        raise typer.Exit(1)
+
+    cfg = config_mod.load(vault_path)
+
+    from personal_llm.inference.local import LocalModelClient
+
+    ok, msg = LocalModelClient(
+        cfg.embedding_model.name, cfg.embedding_model.endpoint
+    ).health()
+    if not ok:
+        console.print(f"[red]{msg}[/red]")
+        raise typer.Exit(1)
+
+    from personal_llm.documents.pipeline import search_documents
+    from personal_llm.memory import open_backend
+
+    results = search_documents(open_backend(vault_path), cfg, query, k=k)
+    if not results:
+        console.print("[yellow]No matching chunks (is anything ingested?).[/yellow]")
+        return
+
+    for r in results:
+        snippet = " ".join(r["text"].split())[:200]
+        console.print(
+            f"  [green]{r['score']:.2f}[/green]  [bold]{r['title']}[/bold] "
+            f"[dim]#{r['ordinal']}[/dim]"
+        )
+        console.print(f"    [dim]{snippet}[/dim]")
 
 
 # --------------------------------------------------------------------------- status
@@ -511,6 +620,13 @@ def status(
         table.add_row("embedding model", cfg.embedding_model.name)
         table.add_row("monthly cap", f"${cfg.cloud.monthly_budget_usd:.2f}")
         table.add_row("autonomy", cfg.cloud.autonomy_mode)
+
+        from personal_llm.memory import open_backend
+
+        docs = open_backend(vault_path).list_documents()
+        if docs:
+            chunks = sum(d["n_chunks"] for d in docs)
+            table.add_row("library", f"{len(docs)} document(s), {chunks} chunk(s)")
 
         problems = vault_mod.validate(vault_path)
         if problems:

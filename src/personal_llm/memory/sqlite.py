@@ -53,6 +53,26 @@ CREATE TABLE IF NOT EXISTS fact_embeddings (
     dim INTEGER NOT NULL,
     vector BLOB NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_path TEXT NOT NULL,
+    title TEXT NOT NULL,
+    sha256 TEXT NOT NULL UNIQUE,
+    n_chunks INTEGER NOT NULL DEFAULT 0,
+    ingested_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS doc_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    vector BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_chunks_document ON doc_chunks(document_id);
 """
 
 # Columns added after the facts table first shipped. Existing vaults get them
@@ -281,6 +301,110 @@ class SqliteBackend:
             {"id": fid, "text": text, "vector": unpack(blob).tolist()}
             for fid, text, blob in rows
         ]
+
+    # --- documents (book/document RAG) -------------------------------------
+
+    def document_by_sha(self, sha256: str) -> dict | None:
+        """Return `{id, title, n_chunks}` for an already-ingested document, or None."""
+        row = self.conn.execute(
+            "SELECT id, title, n_chunks FROM documents WHERE sha256 = ?", (sha256,)
+        ).fetchone()
+        return {"id": row[0], "title": row[1], "n_chunks": row[2]} if row else None
+
+    def delete_document_by_path(self, source_path: str) -> bool:
+        """Delete any document(s) at `source_path` and their chunks. True if any."""
+        ids = [
+            r[0]
+            for r in self.conn.execute(
+                "SELECT id FROM documents WHERE source_path = ?", (source_path,)
+            )
+        ]
+        if not ids:
+            return False
+        placeholders = ",".join("?" * len(ids))
+        self.conn.execute(
+            f"DELETE FROM doc_chunks WHERE document_id IN ({placeholders})", tuple(ids)
+        )
+        self.conn.execute(
+            f"DELETE FROM documents WHERE id IN ({placeholders})", tuple(ids)
+        )
+        self.conn.commit()
+        return True
+
+    def add_document(
+        self,
+        source_path: str,
+        title: str,
+        sha256: str,
+        chunks: list[str],
+        vectors: list[list[float]],
+        model: str,
+    ) -> int:
+        """Insert a document and its embedded chunks; return the document id."""
+        from personal_llm.memory.vector import pack
+
+        now = datetime.now(UTC).isoformat()
+        cur = self.conn.execute(
+            "INSERT INTO documents (source_path, title, sha256, n_chunks, ingested_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (source_path, title, sha256, len(chunks), now),
+        )
+        doc_id = cur.lastrowid
+        self.conn.executemany(
+            "INSERT INTO doc_chunks (document_id, ordinal, text, model, dim, vector) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (doc_id, i, chunk, model, len(vec), pack(vec))
+                for i, (chunk, vec) in enumerate(zip(chunks, vectors, strict=True))
+            ],
+        )
+        self.conn.commit()
+        return doc_id
+
+    def list_documents(self) -> list[dict]:
+        """All ingested documents, oldest first."""
+        rows = self.conn.execute(
+            "SELECT title, source_path, n_chunks, ingested_at FROM documents ORDER BY id"
+        ).fetchall()
+        return [
+            {"title": t, "source_path": sp, "n_chunks": n, "ingested_at": ts}
+            for t, sp, n, ts in rows
+        ]
+
+    def search_chunks(self, query_vector: list[float], k: int, model: str) -> list[dict]:
+        """Return the `k` document chunks most similar to `query_vector`, best first.
+
+        Each result carries `text`, `ordinal`, `title`, `source_path`, and the
+        cosine `score`.
+        """
+        from personal_llm.memory.vector import cosine_topk
+
+        rows = self.conn.execute(
+            "SELECT id, vector FROM doc_chunks WHERE model = ?", (model,)
+        ).fetchall()
+        ranked = cosine_topk(query_vector, [(cid, blob) for cid, blob in rows], k)
+        if not ranked:
+            return []
+
+        scores = dict(ranked)
+        placeholders = ",".join("?" * len(scores))
+        meta = self.conn.execute(
+            f"SELECT c.id, c.text, c.ordinal, d.title, d.source_path "
+            f"FROM doc_chunks c JOIN documents d ON d.id = c.document_id "
+            f"WHERE c.id IN ({placeholders})",
+            tuple(scores),
+        ).fetchall()
+        by_id = {
+            cid: {
+                "text": text,
+                "ordinal": ordinal,
+                "title": title,
+                "source_path": source_path,
+                "score": scores[cid],
+            }
+            for cid, text, ordinal, title, source_path in meta
+        }
+        return [by_id[cid] for cid, _ in ranked]
 
     def count_corroborated(self) -> int:
         """Number of active facts promoted to `corroborated` certainty."""

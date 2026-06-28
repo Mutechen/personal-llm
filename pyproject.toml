@@ -29,6 +29,7 @@ dependencies = [
     "psutil>=5.9",
     "smolagents[openai]>=1.25",
     "numpy>=1.26",
+    "pypdf>=4.0",
 ]
 
 [project.optional-dependencies]

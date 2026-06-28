@@ -175,8 +175,8 @@ Read the architecture doc ([docs/ARCHITECTURE.md](ARCHITECTURE.md)) for the full
 
 - **More skills than just `read_vault_file`.** Listing dir contents, writing wiki pages, searching the web (via MCP) — all upcoming.
 - **MCP client.** The agent can't yet talk to MCP servers (Phase 1+).
-- **Wiki population from `raw/`.** `personal-llm ingest <file>` still just copies files into `raw/`; parsing + wiki updates land later in Phase 1.
-- **Semantic memory (facts).** Curated facts are embedded with a local model (`nomic-embed-text`) and searchable by meaning: `personal-llm recall "<query>"`. The nightly loop keeps embeddings current. Still upcoming: document/book ingest (the `ingest` parse->chunk->embed pipeline) and meaning-based search over older *turns*.
+- **Document library (RAG).** `personal-llm ingest <file>` parses `.txt/.md/.pdf/.epub`, chunks it, embeds each chunk locally, and stores it in the vault; search it with `personal-llm books search "<query>"` (and `books list`). Idempotent by content hash. Agent-authored **wiki pages** from `raw/` are still a later chunk; today ingest powers retrieval, not summarization.
+- **Semantic memory (facts).** Curated facts are embedded with a local model (`nomic-embed-text`) and searchable by meaning: `personal-llm recall "<query>"`. The nightly loop keeps embeddings current. Still upcoming: meaning-based search over older *turns* (archival memory).
 - **Tutors / cloud escalation.** Everything stays local. (Phase 1+.)
 - **Fine-tuning.** No LoRAs trained yet. (Phase 2+.)
 - **Lobes export/import.** Namespace directories exist, no commands yet. (Phase 1+.)

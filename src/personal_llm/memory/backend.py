@@ -99,6 +99,37 @@ class MemoryBackend(Protocol):
         """
         ...
 
+    def document_by_sha(self, sha256: str) -> dict | None:
+        """Return `{id, title, n_chunks}` for an ingested document, or None."""
+        ...
+
+    def delete_document_by_path(self, source_path: str) -> bool:
+        """Delete document(s) at `source_path` and their chunks; True if any removed."""
+        ...
+
+    def add_document(
+        self,
+        source_path: str,
+        title: str,
+        sha256: str,
+        chunks: list[str],
+        vectors: list[list[float]],
+        model: str,
+    ) -> int:
+        """Insert a document and its embedded chunks; return the document id."""
+        ...
+
+    def list_documents(self) -> list[dict]:
+        """Return all ingested documents (`title`, `source_path`, `n_chunks`, `ingested_at`)."""
+        ...
+
+    def search_chunks(self, query_vector: list[float], k: int, model: str) -> list[dict]:
+        """Return the `k` document chunks most similar to `query_vector`, best first.
+
+        Each is a dict with `text`, `ordinal`, `title`, `source_path`, and `score`.
+        """
+        ...
+
     def count_corroborated(self) -> int:
         """Return how many active facts carry `corroborated` certainty.
 

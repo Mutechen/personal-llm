@@ -125,9 +125,11 @@ personal-llm/
 │       ├── vault.py         # vault discovery + scaffolding
 │       ├── identity.py      # identity.md loader
 │       ├── inference/       # L2
-│       ├── memory/          # L4 — MemoryBackend protocol + SqliteBackend recall store
+│       ├── memory/          # L4 — MemoryBackend protocol + SqliteBackend (facts, embeddings, doc chunks) + vector.py
+│       ├── documents/       # L4 — book/doc ingest: parsers (txt/md/pdf/epub) + chunking + pipeline (RAG)
+│       ├── learning/        # transcript distill + fact grading (G1/G2) + dedup (G3) + fact embeddings
 │       ├── skills/          # L5 — SKILL.md registry, namespace precedence (P1)
-│       ├── agent/           # L6 — smol.py (build_agent + ask + chat_turn) + tools.py (skill adapter)
+│       ├── agent/           # L6 — smol.py (build_agent + ask + chat_turn, semantic recall) + tools.py
 │       ├── interface/       # L7 — CLI chat REPL (routes through agent/smol.py)
 │       ├── sleep/           # sleep-time runner
 │       └── builtin_skills/  # Phase 1: read_vault_file/ with SKILL.md + tool.py
@@ -149,6 +151,9 @@ uv run personal-llm init                 # scaffold a vault
 uv run personal-llm chat                 # interactive REPL — smolagents agent + skill library
 uv run personal-llm ask "..."            # single-shot agent invocation (same agent as chat)
 uv run personal-llm skills list          # show discovered SKILL.md skills
+uv run personal-llm recall "..."         # semantic search over curated facts
+uv run personal-llm ingest FILE          # parse/chunk/embed a doc (.txt/.md/.pdf/.epub) into the library
+uv run personal-llm books search "..."   # semantic search over ingested document chunks
 uv run personal-llm sleep                # run sleep-time once (writes growth log)
 uv run personal-llm status               # vault + inference health check
 
