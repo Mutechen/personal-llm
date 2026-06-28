@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from personal_llm.documents.parsers import UnsupportedDocument, extract_text
+from personal_llm.documents.parsers import (
+    DocumentParseError,
+    UnsupportedDocument,
+    extract_text,
+)
 
 
 def test_extract_txt(tmp_path: Path):
@@ -58,6 +62,20 @@ def _make_epub(path: Path) -> None:
         z.writestr("OEBPS/content.opf", opf)
         z.writestr("OEBPS/ch1.xhtml", ch1)
         z.writestr("OEBPS/ch2.xhtml", ch2)
+
+
+def test_corrupt_pdf_raises_parse_error(tmp_path: Path):
+    p = tmp_path / "broken.pdf"
+    p.write_bytes(b"%PDF-1.4 this is not a real pdf")
+    with pytest.raises(DocumentParseError):
+        extract_text(p)
+
+
+def test_corrupt_epub_raises_parse_error(tmp_path: Path):
+    p = tmp_path / "broken.epub"
+    p.write_bytes(b"definitely not a zip archive")
+    with pytest.raises(DocumentParseError):
+        extract_text(p)
 
 
 def test_extract_epub_reads_spine_and_strips_scripts(tmp_path: Path):

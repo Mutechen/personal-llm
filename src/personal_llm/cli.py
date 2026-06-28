@@ -488,18 +488,23 @@ def ingest(
     if not dest.exists():
         shutil.copy2(file, dest)
 
-    from personal_llm.documents.parsers import UnsupportedDocument
+    from personal_llm.documents.parsers import DocumentParseError, UnsupportedDocument
     from personal_llm.documents.pipeline import ingest_document
     from personal_llm.memory import open_backend
 
     try:
         with console.status("[dim]parsing, chunking, embedding…[/dim]", spinner="dots"):
             result = ingest_document(open_backend(vault_path), cfg, dest)
-    except UnsupportedDocument as e:
+    except (UnsupportedDocument, DocumentParseError) as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1) from None
 
-    if result.skipped:
+    if result.empty:
+        console.print(
+            f"[yellow]No extractable text[/yellow] in {result.title} — "
+            "skipped. (A scanned/image-only PDF? OCR isn't supported yet.)"
+        )
+    elif result.skipped:
         console.print(
             f"[yellow]Already ingested[/yellow] {result.title} "
             f"({result.chunks} chunks) — content unchanged."

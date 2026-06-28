@@ -59,6 +59,18 @@ def test_ingest_replaces_changed_content_at_same_path(tmp_path: Path):
     assert len(backend.list_documents()) == 1  # old version removed
 
 
+def test_ingest_empty_text_is_not_stored(tmp_path: Path):
+    """A document that yields no text (e.g. a scanned PDF) is reported, not stored."""
+    backend = SqliteBackend(tmp_path)
+    doc = _doc(tmp_path, "scanned.txt", "   \n\n   ")  # whitespace-only -> no chunks
+
+    result = ingest_document(backend, VaultConfig(), doc, embedder=_embedder)
+
+    assert result.empty
+    assert result.chunks == 0
+    assert backend.list_documents() == []
+
+
 def test_search_documents_returns_hits(tmp_path: Path):
     backend = SqliteBackend(tmp_path)
     doc = _doc(tmp_path, "book.txt", "alpha beta\n\ngamma delta")

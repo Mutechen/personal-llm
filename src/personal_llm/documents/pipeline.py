@@ -33,6 +33,7 @@ class IngestResult:
     chunks: int
     skipped: bool = False   # identical content already ingested
     replaced: bool = False  # superseded a prior version at the same path
+    empty: bool = False     # parsed but yielded no text (e.g. a scanned PDF)
 
 
 def _default_embedder(config: VaultConfig) -> Embedder:
@@ -75,9 +76,13 @@ def ingest_document(
             title=existing["title"], chunks=existing["n_chunks"], skipped=True
         )
 
-    replaced = backend.delete_document_by_path(str(path))
-
     chunks = chunk_text(extract_text(path))
+    if not chunks:
+        # No extractable text (e.g. a scanned/image-only PDF). Don't store an
+        # empty document; let the caller report it.
+        return IngestResult(title=path.stem, chunks=0, empty=True)
+
+    replaced = backend.delete_document_by_path(str(path))
     vectors = _embed_all(embedder, chunks)
     backend.add_document(
         str(path), path.stem, sha, chunks, vectors, config.embedding_model.name

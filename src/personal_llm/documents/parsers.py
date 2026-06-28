@@ -24,6 +24,14 @@ class UnsupportedDocument(ValueError):
     """Raised for a file extension the pipeline can't parse."""
 
 
+class DocumentParseError(RuntimeError):
+    """Raised when a supported file type can't be parsed (corrupt, encrypted, ...).
+
+    Distinct from `UnsupportedDocument` so a batch ingest can skip a single bad
+    file without aborting, and the CLI can report *why* one document failed.
+    """
+
+
 def extract_text(path: Path) -> str:
     """Return the document's text, dispatching on extension."""
     suffix = path.suffix.lower()
@@ -42,8 +50,15 @@ def extract_text(path: Path) -> str:
 def _extract_pdf(path: Path) -> str:
     from pypdf import PdfReader
 
-    reader = PdfReader(str(path))
-    return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+    # Parsing arbitrary book files is an untrusted boundary; any library error
+    # (corrupt, encrypted, malformed) becomes a clean, skippable DocumentParseError.
+    try:
+        reader = PdfReader(str(path))
+        if reader.is_encrypted:
+            reader.decrypt("")  # many "encrypted" PDFs just use an empty password
+        return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception as e:
+        raise DocumentParseError(f"cannot parse PDF {path.name}: {e}") from e
 
 
 _SKIP_TAGS = frozenset({"script", "style", "head"})
@@ -100,31 +115,39 @@ def _find_opf(zf: zipfile.ZipFile) -> str:
 
 
 def _extract_epub(path: Path) -> str:
-    with zipfile.ZipFile(path) as zf:
-        opf_path = _find_opf(zf)
-        opf = ET.fromstring(zf.read(opf_path))
-        opf_dir = posixpath.dirname(opf_path)
+    # As with PDF: any structural failure (bad zip/XML) becomes DocumentParseError.
+    try:
+        with zipfile.ZipFile(path) as zf:
+            opf_path = _find_opf(zf)
+            opf = ET.fromstring(zf.read(opf_path))
+            opf_dir = posixpath.dirname(opf_path)
 
-        manifest: dict[str, str] = {}
-        spine: list[str] = []
-        for el in opf.iter():
-            tag = _local(el.tag)
-            if tag == "item" and el.get("id") and el.get("href"):
-                manifest[el.get("id")] = el.get("href")
-            elif tag == "itemref" and el.get("idref"):
-                spine.append(el.get("idref"))
+            manifest: dict[str, str] = {}
+            spine: list[str] = []
+            for el in opf.iter():
+                tag = _local(el.tag)
+                if tag == "item" and el.get("id") and el.get("href"):
+                    manifest[el.get("id")] = el.get("href")
+                elif tag == "itemref" and el.get("idref"):
+                    spine.append(el.get("idref"))
 
-        # Spine gives reading order; fall back to manifest order if absent.
-        hrefs = [manifest[i] for i in spine if i in manifest] or list(manifest.values())
+            # Spine gives reading order; fall back to manifest order if absent.
+            hrefs = [manifest[i] for i in spine if i in manifest] or list(manifest.values())
 
-        texts: list[str] = []
-        for href in hrefs:
-            if not href.lower().endswith((".xhtml", ".html", ".htm")):
-                continue
-            full = posixpath.normpath(posixpath.join(opf_dir, href)) if opf_dir else href
-            try:
-                markup = zf.read(full).decode("utf-8", errors="replace")
-            except KeyError:
-                continue
-            texts.append(_html_to_text(markup))
-        return "\n\n".join(texts)
+            texts: list[str] = []
+            for href in hrefs:
+                if not href.lower().endswith((".xhtml", ".html", ".htm")):
+                    continue
+                full = (
+                    posixpath.normpath(posixpath.join(opf_dir, href)) if opf_dir else href
+                )
+                try:
+                    markup = zf.read(full).decode("utf-8", errors="replace")
+                except KeyError:
+                    continue
+                texts.append(_html_to_text(markup))
+            return "\n\n".join(texts)
+    except UnsupportedDocument:
+        raise
+    except Exception as e:
+        raise DocumentParseError(f"cannot parse EPUB {path.name}: {e}") from e
