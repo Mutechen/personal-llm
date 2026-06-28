@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS doc_chunks (
     document_id INTEGER NOT NULL,
     ordinal INTEGER NOT NULL,
     text TEXT NOT NULL,
+    location TEXT,
     model TEXT NOT NULL,
     dim INTEGER NOT NULL,
     vector BLOB NOT NULL
@@ -88,6 +89,11 @@ _FACT_MIGRATIONS = {
     "corroboration": "ALTER TABLE facts ADD COLUMN corroboration INTEGER NOT NULL DEFAULT 1",
 }
 
+# Columns added to doc_chunks after it first shipped.
+_DOC_CHUNK_MIGRATIONS = {
+    "location": "ALTER TABLE doc_chunks ADD COLUMN location TEXT",
+}
+
 
 class SqliteBackend:
     """`MemoryBackend` storing conversation turns in a per-vault SQLite database."""
@@ -99,7 +105,15 @@ class SqliteBackend:
         self.conn = sqlite3.connect(self.db_path)
         self.conn.executescript(_SCHEMA)
         self._migrate_facts()
+        self._migrate_table("doc_chunks", _DOC_CHUNK_MIGRATIONS)
         self.conn.commit()
+
+    def _migrate_table(self, table: str, migrations: dict[str, str]) -> None:
+        """Add any missing columns to `table` (non-breaking ADD COLUMN)."""
+        existing = {row[1] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+        for column, ddl in migrations.items():
+            if column not in existing:
+                self.conn.execute(ddl)
 
     def _migrate_facts(self) -> None:
         """Add fact columns missing from an older vault, then backfill anchors."""
@@ -339,10 +353,17 @@ class SqliteBackend:
         chunks: list[str],
         vectors: list[list[float]],
         model: str,
+        locations: list[str] | None = None,
     ) -> int:
-        """Insert a document and its embedded chunks; return the document id."""
+        """Insert a document and its embedded chunks; return the document id.
+
+        `locations` (parallel to `chunks`) cites where each chunk came from
+        (e.g. `"p.42"`); omitted -> NULL.
+        """
         from personal_llm.memory.vector import pack
 
+        if locations is None:
+            locations = [None] * len(chunks)
         now = datetime.now(UTC).isoformat()
         cur = self.conn.execute(
             "INSERT INTO documents (source_path, title, sha256, n_chunks, ingested_at) "
@@ -351,11 +372,13 @@ class SqliteBackend:
         )
         doc_id = cur.lastrowid
         self.conn.executemany(
-            "INSERT INTO doc_chunks (document_id, ordinal, text, model, dim, vector) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO doc_chunks (document_id, ordinal, text, location, model, dim, vector) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-                (doc_id, i, chunk, model, len(vec), pack(vec))
-                for i, (chunk, vec) in enumerate(zip(chunks, vectors, strict=True))
+                (doc_id, i, chunk, loc, model, len(vec), pack(vec))
+                for i, (chunk, loc, vec) in enumerate(
+                    zip(chunks, locations, vectors, strict=True)
+                )
             ],
         )
         self.conn.commit()
@@ -389,7 +412,7 @@ class SqliteBackend:
         scores = dict(ranked)
         placeholders = ",".join("?" * len(scores))
         meta = self.conn.execute(
-            f"SELECT c.id, c.text, c.ordinal, d.title, d.source_path "
+            f"SELECT c.id, c.text, c.ordinal, c.location, d.title, d.source_path "
             f"FROM doc_chunks c JOIN documents d ON d.id = c.document_id "
             f"WHERE c.id IN ({placeholders})",
             tuple(scores),
@@ -398,11 +421,12 @@ class SqliteBackend:
             cid: {
                 "text": text,
                 "ordinal": ordinal,
+                "location": location,
                 "title": title,
                 "source_path": source_path,
                 "score": scores[cid],
             }
-            for cid, text, ordinal, title, source_path in meta
+            for cid, text, ordinal, location, title, source_path in meta
         }
         return [by_id[cid] for cid, _ in ranked]
 

@@ -51,7 +51,8 @@ def run(vault_root: Path, query: str, k: int = 5) -> str:
     blocks = []
     for r in results:
         passage = " ".join(r["text"].split())
+        loc = f", {r['location']}" if r.get("location") else ""
         blocks.append(
-            f"[{r['title']} #{r['ordinal']}] (relevance {r['score']:.2f})\n{passage}"
+            f"[{r['title']}{loc}] (relevance {r['score']:.2f})\n{passage}"
         )
     return "\n\n".join(blocks)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from personal_llm.documents.chunking import chunk_text, normalize
+from personal_llm.documents.chunking import chunk_segments, chunk_text, normalize
 
 
 def test_normalize_collapses_whitespace_and_blank_lines():
@@ -35,6 +35,14 @@ def test_chunk_hard_splits_long_paragraph_within_target():
     chunks = chunk_text(big, target_chars=200, overlap_chars=40)
     assert len(chunks) > 1
     assert all(len(c) <= 200 for c in chunks)
+
+
+def test_chunk_segments_tags_each_chunk_with_its_location():
+    segs = [("p.1", "alpha beta"), ("p.2", "word " * 400)]  # second hard-splits
+    out = chunk_segments(segs, target_chars=200, overlap_chars=40)
+    assert out[0] == ("p.1", "alpha beta")
+    assert len(out) > 2
+    assert all(loc == "p.2" for loc, _ in out[1:])  # no chunk spans a page boundary
 
 
 def test_chunk_consecutive_chunks_overlap():

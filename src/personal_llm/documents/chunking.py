@@ -80,3 +80,21 @@ def chunk_text(
     if current:
         chunks.append(current)
     return chunks
+
+
+def chunk_segments(
+    segments: list[tuple[str, str]],
+    target_chars: int = TARGET_CHARS,
+    overlap_chars: int = OVERLAP_CHARS,
+) -> list[tuple[str, str]]:
+    """Chunk each `(location, text)` segment, tagging chunks with their location.
+
+    Returns `(location, chunk)` pairs in document order, so a retrieved chunk
+    knows which page/chapter it came from. Segments are chunked independently, so
+    a chunk never spans a page or chapter boundary.
+    """
+    located: list[tuple[str, str]] = []
+    for location, text in segments:
+        for chunk in chunk_text(text, target_chars, overlap_chars):
+            located.append((location, chunk))
+    return located

@@ -591,11 +591,13 @@ def books_search(
 
     for r in results:
         snippet = " ".join(r["text"].split())[:200]
+        loc = f" [cyan]{r['location']}[/cyan]" if r.get("location") else ""
         console.print(
-            f"  [green]{r['score']:.2f}[/green]  [bold]{r['title']}[/bold] "
+            f"  [green]{r['score']:.2f}[/green]  [bold]{r['title']}[/bold]{loc} "
             f"[dim]#{r['ordinal']}[/dim]"
         )
         console.print(f"    [dim]{snippet}[/dim]")
+        console.print(f"    [dim]{r['source_path']}[/dim]")
 
 
 # --------------------------------------------------------------------------- status

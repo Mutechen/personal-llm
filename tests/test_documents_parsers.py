@@ -10,6 +10,7 @@ import pytest
 from personal_llm.documents.parsers import (
     DocumentParseError,
     UnsupportedDocument,
+    extract_segments,
     extract_text,
 )
 
@@ -64,6 +65,12 @@ def _make_epub(path: Path) -> None:
         z.writestr("OEBPS/ch2.xhtml", ch2)
 
 
+def test_extract_segments_txt_is_single_unlocated_segment(tmp_path: Path):
+    p = tmp_path / "a.txt"
+    p.write_text("hello world", encoding="utf-8")
+    assert extract_segments(p) == [("", "hello world")]
+
+
 def test_corrupt_pdf_raises_parse_error(tmp_path: Path):
     p = tmp_path / "broken.pdf"
     p.write_bytes(b"%PDF-1.4 this is not a real pdf")
@@ -86,3 +93,11 @@ def test_extract_epub_reads_spine_and_strips_scripts(tmp_path: Path):
     assert "quick brown fox" in text
     assert "lazy dog" in text
     assert "ignore_me" not in text  # <script> content dropped
+
+
+def test_extract_segments_epub_locates_by_spine_file(tmp_path: Path):
+    p = tmp_path / "book.epub"
+    _make_epub(p)
+    segments = extract_segments(p)
+    assert [loc for loc, _ in segments] == ["ch1", "ch2"]
+    assert "quick brown fox" in segments[0][1]

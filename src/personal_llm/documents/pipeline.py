@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from personal_llm.config import VaultConfig
-from personal_llm.documents.chunking import chunk_text
-from personal_llm.documents.parsers import extract_text
+from personal_llm.documents.chunking import chunk_segments
+from personal_llm.documents.parsers import extract_segments
 from personal_llm.memory import MemoryBackend
 
 # Maps a batch of strings to one vector each. Injectable for tests.
@@ -76,18 +76,21 @@ def ingest_document(
             title=existing["title"], chunks=existing["n_chunks"], skipped=True
         )
 
-    chunks = chunk_text(extract_text(path))
-    if not chunks:
+    located = chunk_segments(extract_segments(path))
+    if not located:
         # No extractable text (e.g. a scanned/image-only PDF). Don't store an
         # empty document; let the caller report it.
         return IngestResult(title=path.stem, chunks=0, empty=True)
 
+    locations = [loc for loc, _ in located]
+    texts = [text for _, text in located]
     replaced = backend.delete_document_by_path(str(path))
-    vectors = _embed_all(embedder, chunks)
+    vectors = _embed_all(embedder, texts)
     backend.add_document(
-        str(path), path.stem, sha, chunks, vectors, config.embedding_model.name
+        str(path), path.stem, sha, texts, vectors,
+        config.embedding_model.name, locations=locations,
     )
-    return IngestResult(title=path.stem, chunks=len(chunks), replaced=replaced)
+    return IngestResult(title=path.stem, chunks=len(texts), replaced=replaced)
 
 
 def search_documents(

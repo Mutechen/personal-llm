@@ -115,8 +115,12 @@ class MemoryBackend(Protocol):
         chunks: list[str],
         vectors: list[list[float]],
         model: str,
+        locations: list[str] | None = None,
     ) -> int:
-        """Insert a document and its embedded chunks; return the document id."""
+        """Insert a document and its embedded chunks; return the document id.
+
+        `locations` (parallel to `chunks`) cites where each chunk came from.
+        """
         ...
 
     def list_documents(self) -> list[dict]:
@@ -126,7 +130,8 @@ class MemoryBackend(Protocol):
     def search_chunks(self, query_vector: list[float], k: int, model: str) -> list[dict]:
         """Return the `k` document chunks most similar to `query_vector`, best first.
 
-        Each is a dict with `text`, `ordinal`, `title`, `source_path`, and `score`.
+        Each is a dict with `text`, `ordinal`, `location`, `title`,
+        `source_path`, and `score`.
         """
         ...
 

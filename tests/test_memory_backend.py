@@ -176,6 +176,17 @@ def test_documents_add_list_and_search(backend: MemoryBackend):
     assert results[0]["score"] > results[1]["score"]
 
 
+def test_search_chunks_returns_location(backend: MemoryBackend):
+    backend.add_document(
+        "/raw/b.pdf", "b", "sha1",
+        ["page one text", "page two text"], [[1.0, 0.0], [0.0, 1.0]], "m1",
+        locations=["p.1", "p.2"],
+    )
+    res = backend.search_chunks([1.0, 0.0], 1, "m1")
+    assert res[0]["location"] == "p.1"
+    assert res[0]["source_path"] == "/raw/b.pdf"
+
+
 def test_search_chunks_filters_by_model(backend: MemoryBackend):
     backend.add_document("/raw/b.txt", "b", "sha1", ["x"], [[1.0, 0.0]], "m1")
     assert backend.search_chunks([1.0, 0.0], 3, "other") == []

@@ -33,21 +33,32 @@ class DocumentParseError(RuntimeError):
 
 
 def extract_text(path: Path) -> str:
-    """Return the document's text, dispatching on extension."""
+    """Return the document's full text (segments joined), dispatching on extension."""
+    return "\n\n".join(text for _, text in extract_segments(path))
+
+
+def extract_segments(path: Path) -> list[tuple[str, str]]:
+    """Return the document as `(location, text)` segments for citation.
+
+    A segment is the smallest unit we can cite back to: a PDF page (`"p.42"`), an
+    EPUB spine document (its file stem), or the whole file for plain text (`""`).
+    Chunks inherit their segment's location, so retrieval can say *where* a
+    passage came from.
+    """
     suffix = path.suffix.lower()
     if suffix in TEXT_SUFFIXES:
-        return path.read_text(encoding="utf-8", errors="replace")
+        return [("", path.read_text(encoding="utf-8", errors="replace"))]
     if suffix == ".pdf":
-        return _extract_pdf(path)
+        return _pdf_segments(path)
     if suffix == ".epub":
-        return _extract_epub(path)
+        return _epub_segments(path)
     raise UnsupportedDocument(
         f"Unsupported document type {suffix!r}; supported: "
         f"{', '.join(sorted(SUPPORTED_SUFFIXES))}"
     )
 
 
-def _extract_pdf(path: Path) -> str:
+def _pdf_segments(path: Path) -> list[tuple[str, str]]:
     from pypdf import PdfReader
 
     # Parsing arbitrary book files is an untrusted boundary; any library error
@@ -56,7 +67,10 @@ def _extract_pdf(path: Path) -> str:
         reader = PdfReader(str(path))
         if reader.is_encrypted:
             reader.decrypt("")  # many "encrypted" PDFs just use an empty password
-        return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+        return [
+            (f"p.{i}", page.extract_text() or "")
+            for i, page in enumerate(reader.pages, start=1)
+        ]
     except Exception as e:
         raise DocumentParseError(f"cannot parse PDF {path.name}: {e}") from e
 
@@ -114,7 +128,7 @@ def _find_opf(zf: zipfile.ZipFile) -> str:
     raise UnsupportedDocument("epub: no rootfile in META-INF/container.xml")
 
 
-def _extract_epub(path: Path) -> str:
+def _epub_segments(path: Path) -> list[tuple[str, str]]:
     # As with PDF: any structural failure (bad zip/XML) becomes DocumentParseError.
     try:
         with zipfile.ZipFile(path) as zf:
@@ -134,7 +148,7 @@ def _extract_epub(path: Path) -> str:
             # Spine gives reading order; fall back to manifest order if absent.
             hrefs = [manifest[i] for i in spine if i in manifest] or list(manifest.values())
 
-            texts: list[str] = []
+            segments: list[tuple[str, str]] = []
             for href in hrefs:
                 if not href.lower().endswith((".xhtml", ".html", ".htm")):
                     continue
@@ -145,8 +159,9 @@ def _extract_epub(path: Path) -> str:
                     markup = zf.read(full).decode("utf-8", errors="replace")
                 except KeyError:
                     continue
-                texts.append(_html_to_text(markup))
-            return "\n\n".join(texts)
+                location = posixpath.splitext(posixpath.basename(href))[0]
+                segments.append((location, _html_to_text(markup)))
+            return segments
     except UnsupportedDocument:
         raise
     except Exception as e:
