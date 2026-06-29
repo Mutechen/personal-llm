@@ -18,7 +18,12 @@ from pathlib import Path
 
 from personal_llm.config import VaultConfig
 from personal_llm.documents.chunking import chunk_segments
-from personal_llm.documents.parsers import extract_segments
+from personal_llm.documents.parsers import (
+    SUPPORTED_SUFFIXES,
+    DocumentParseError,
+    UnsupportedDocument,
+    extract_segments,
+)
 from personal_llm.memory import MemoryBackend
 
 # Maps a batch of strings to one vector each. Injectable for tests.
@@ -34,6 +39,17 @@ class IngestResult:
     skipped: bool = False   # identical content already ingested
     replaced: bool = False  # superseded a prior version at the same path
     empty: bool = False     # parsed but yielded no text (e.g. a scanned PDF)
+
+
+@dataclass
+class IngestSummary:
+    """Outcome of ingesting a directory of documents (e.g. the nightly raw/ scan)."""
+
+    ingested: int = 0   # newly ingested or replaced (chunks stored)
+    skipped: int = 0    # unchanged (already ingested)
+    empty: int = 0      # no extractable text (e.g. scanned PDFs)
+    failed: int = 0     # unsupported type or parse error
+    chunks: int = 0     # total chunks added this run
 
 
 def _default_embedder(config: VaultConfig) -> Embedder:
@@ -91,6 +107,41 @@ def ingest_document(
         config.embedding_model.name, locations=locations,
     )
     return IngestResult(title=path.stem, chunks=len(texts), replaced=replaced)
+
+
+def ingest_directory(
+    backend: MemoryBackend,
+    config: VaultConfig,
+    directory: Path,
+    embedder: Embedder | None = None,
+) -> IngestSummary:
+    """Ingest every supported document under `directory` (recursively).
+
+    Idempotent (per-file content hash), so re-running only does new/changed work.
+    A single unparseable file is counted and skipped, never aborting the rest —
+    this is what the nightly loop runs over the vault's `raw/`.
+    """
+    summary = IngestSummary()
+    if not directory.is_dir():
+        return summary
+    embedder = embedder or _default_embedder(config)
+
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
+            continue
+        try:
+            result = ingest_document(backend, config, path, embedder=embedder)
+        except (UnsupportedDocument, DocumentParseError):
+            summary.failed += 1
+            continue
+        if result.empty:
+            summary.empty += 1
+        elif result.skipped:
+            summary.skipped += 1
+        else:
+            summary.ingested += 1
+            summary.chunks += result.chunks
+    return summary
 
 
 def search_documents(

@@ -9,7 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from personal_llm.config import VaultConfig
-from personal_llm.documents.pipeline import ingest_document, search_documents
+from personal_llm.documents.pipeline import (
+    ingest_directory,
+    ingest_document,
+    search_documents,
+)
 from personal_llm.memory import SqliteBackend
 
 
@@ -69,6 +73,30 @@ def test_ingest_empty_text_is_not_stored(tmp_path: Path):
     assert result.empty
     assert result.chunks == 0
     assert backend.list_documents() == []
+
+
+def test_ingest_directory_counts_and_is_idempotent(tmp_path: Path):
+    backend = SqliteBackend(tmp_path)
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "good1.txt").write_text("alpha beta gamma", encoding="utf-8")
+    (raw / "good2.md").write_text("# Heading\n\nbody text", encoding="utf-8")
+    (raw / "blank.txt").write_text("   \n\n  ", encoding="utf-8")  # no text -> empty
+    (raw / "broken.epub").write_bytes(b"not a zip")  # supported type, unparseable
+    (raw / "ignore.xyz").write_text("unsupported type, skipped silently", encoding="utf-8")
+
+    first = ingest_directory(backend, VaultConfig(), raw, embedder=_embedder)
+    assert (first.ingested, first.empty, first.failed) == (2, 1, 1)
+    assert len(backend.list_documents()) == 2
+
+    second = ingest_directory(backend, VaultConfig(), raw, embedder=_embedder)
+    assert (second.ingested, second.skipped) == (0, 2)  # unchanged on re-run
+
+
+def test_ingest_directory_missing_dir_is_noop(tmp_path: Path):
+    backend = SqliteBackend(tmp_path)
+    summary = ingest_directory(backend, VaultConfig(), tmp_path / "nope", embedder=_embedder)
+    assert (summary.ingested, summary.skipped, summary.failed) == (0, 0, 0)
 
 
 def test_search_documents_returns_hits(tmp_path: Path):
