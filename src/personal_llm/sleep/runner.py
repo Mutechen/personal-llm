@@ -21,6 +21,7 @@ from pathlib import Path
 
 from personal_llm import config as config_mod
 from personal_llm.documents.pipeline import IngestSummary, ingest_directory
+from personal_llm.documents.wiki import WikiResult, build_library_wiki
 from personal_llm.learning.dedup import DedupResult, dedup_facts
 from personal_llm.learning.embeddings import embed_facts
 from personal_llm.learning.grading import GradeResult, grade_facts
@@ -44,6 +45,7 @@ class SleepReport:
     corroborated_new: int = 0  # promoted to `corroborated` this cycle
     facts_embedded: int = 0  # embeddings computed this cycle
     ingest: IngestSummary | None = None  # documents auto-ingested from raw/
+    wiki: WikiResult | None = None  # library wiki pages built this cycle
     turn_counts: dict[str, int] | None = None
 
 
@@ -105,6 +107,8 @@ def run_once(vault_path: Path) -> SleepReport:
 
     if config.sleep.llm_grading and model_up:
         report.dedup = dedup_facts(backend, config)
+        # Summarize new/changed library docs into wiki pages (needs the chat model).
+        report.wiki = build_library_wiki(vault_path, config, backend)
 
     if wants_model and not model_up:
         report.model_skipped = True
@@ -154,13 +158,19 @@ def _render(report: SleepReport) -> str:
     if report.model_skipped:
         lines.append("- LLM grading/dedup skipped — local model unreachable.")
 
-    if report.ingest is not None:
-        ing = report.ingest
-        lines += ["", "## Library (raw/)"]
-        lines.append(
-            f"- Ingested {ing.ingested} new doc(s) ({ing.chunks} chunks); "
-            f"{ing.skipped} unchanged, {ing.empty} no-text, {ing.failed} failed."
-        )
+    if report.ingest is not None or report.wiki is not None:
+        lines += ["", "## Library"]
+        if report.ingest is not None:
+            ing = report.ingest
+            lines.append(
+                f"- Ingested {ing.ingested} new doc(s) ({ing.chunks} chunks) from raw/; "
+                f"{ing.skipped} unchanged, {ing.empty} no-text, {ing.failed} failed."
+            )
+        if report.wiki is not None:
+            w = report.wiki
+            lines.append(
+                f"- Wiki: generated {w.generated} page(s), {w.skipped} up-to-date."
+            )
 
     lines += [
         "",

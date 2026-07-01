@@ -600,6 +600,49 @@ def books_search(
         console.print(f"    [dim]{r['source_path']}[/dim]")
 
 
+# --------------------------------------------------------------------------- wiki
+
+wiki_app = typer.Typer(help="Build the auto-generated library wiki.", no_args_is_help=True)
+app.add_typer(wiki_app, name="wiki")
+
+
+@wiki_app.command("build")
+def wiki_build(
+    vault: Annotated[
+        str | None,
+        typer.Option("--vault", "-v", help="Vault path override."),
+    ] = None,
+) -> None:
+    """Summarize each ingested document into a wiki/library/ page (idempotent)."""
+    vault_path = vault_mod.resolve_vault_path(vault)
+    if not vault_mod.exists(vault_path):
+        console.print(f"[red]No vault at {vault_path}.[/red]")
+        raise typer.Exit(1)
+
+    cfg = config_mod.load(vault_path)
+
+    from personal_llm.inference.local import LocalModelClient
+
+    ok, msg = LocalModelClient(cfg.local_model.name, cfg.local_model.endpoint).health()
+    if not ok:
+        console.print(f"[red]{msg}[/red]")
+        raise typer.Exit(1)
+
+    from personal_llm.documents.wiki import build_library_wiki
+    from personal_llm.memory import open_backend
+
+    with console.status("[dim]summarizing documents…[/dim]", spinner="dots"):
+        result = build_library_wiki(vault_path, cfg, open_backend(vault_path))
+
+    if result.generated == 0 and result.skipped == 0:
+        console.print("[dim]No documents ingested yet. Try: personal-llm ingest <file>[/dim]")
+        return
+    console.print(
+        f"[green]Wiki built[/green]: {result.generated} page(s) generated, "
+        f"{result.skipped} up-to-date → {result.pages_dir}"
+    )
+
+
 # --------------------------------------------------------------------------- status
 
 

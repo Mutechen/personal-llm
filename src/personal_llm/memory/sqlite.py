@@ -387,12 +387,31 @@ class SqliteBackend:
     def list_documents(self) -> list[dict]:
         """All ingested documents, oldest first."""
         rows = self.conn.execute(
-            "SELECT title, source_path, n_chunks, ingested_at FROM documents ORDER BY id"
+            "SELECT id, title, source_path, sha256, n_chunks, ingested_at "
+            "FROM documents ORDER BY id"
         ).fetchall()
         return [
-            {"title": t, "source_path": sp, "n_chunks": n, "ingested_at": ts}
-            for t, sp, n, ts in rows
+            {
+                "id": did,
+                "title": t,
+                "source_path": sp,
+                "sha256": sha,
+                "n_chunks": n,
+                "ingested_at": ts,
+            }
+            for did, t, sp, sha, n, ts in rows
         ]
+
+    def document_chunk_texts(self, document_id: int, limit: int = 10) -> list[str]:
+        """First `limit` chunk texts of a document, in reading order.
+
+        A bounded sample for summarization (wiki generation) — not the whole book.
+        """
+        rows = self.conn.execute(
+            "SELECT text FROM doc_chunks WHERE document_id = ? ORDER BY ordinal LIMIT ?",
+            (document_id, limit),
+        ).fetchall()
+        return [text for (text,) in rows]
 
     def search_chunks(self, query_vector: list[float], k: int, model: str) -> list[dict]:
         """Return the `k` document chunks most similar to `query_vector`, best first.

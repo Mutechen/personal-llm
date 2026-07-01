@@ -173,9 +173,9 @@ Read the architecture doc ([docs/ARCHITECTURE.md](ARCHITECTURE.md)) for the full
 
 **Still missing (next chunks):**
 
-- **More skills.** `read_vault_file` and `search_library` (RAG over the ingested library) ship as builtins; listing dir contents, writing wiki pages, searching the web (via MCP) are upcoming.
+- **More skills.** `read_vault_file` and `search_library` (RAG over the ingested library) ship as builtins; listing dir contents and searching the web (via MCP) are upcoming.
 - **MCP client.** The agent can't yet talk to MCP servers (Phase 1+).
-- **Document library (RAG).** `personal-llm ingest <file>` parses `.txt/.md/.pdf/.epub`, chunks it, embeds each chunk locally, and stores it in the vault; search it with `personal-llm books search "<query>"` (and `books list`), or just ask in `chat`/`ask` — the agent has a `search_library` tool and grounds answers in your library with citations. Idempotent by content hash. Agent-authored **wiki pages** from `raw/` are still a later chunk; today ingest powers retrieval, not summarization.
+- **Document library (RAG).** `personal-llm ingest <file>` parses `.txt/.md/.pdf/.epub`, chunks it, embeds each chunk locally, and stores it in the vault; search it with `personal-llm books search "<query>"` (and `books list`), or just ask in `chat`/`ask` — the agent has a `search_library` tool and grounds answers in your library with citations. Idempotent by content hash. The nightly loop also **auto-ingests** anything you drop in `raw/` and writes a **wiki page** per document (`wiki/library/`, a summary + key topics with a source citation) — build them on demand with `personal-llm wiki build`.
 - **Semantic memory (facts).** Curated facts are embedded with a local multilingual model (`snowflake-arctic-embed2`, configurable) and searchable by meaning — across languages — via `personal-llm recall "<query>"`. The nightly loop keeps embeddings current. Still upcoming: meaning-based search over older *turns* (archival memory).
 - **Tutors / cloud escalation.** Everything stays local. (Phase 1+.)
 - **Fine-tuning.** No LoRAs trained yet. (Phase 2+.)

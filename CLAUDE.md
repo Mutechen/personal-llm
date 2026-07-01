@@ -126,7 +126,7 @@ personal-llm/
 │       ├── identity.py      # identity.md loader
 │       ├── inference/       # L2
 │       ├── memory/          # L4 — MemoryBackend protocol + SqliteBackend (facts, embeddings, doc chunks) + vector.py
-│       ├── documents/       # L4 — book/doc ingest: parsers (txt/md/pdf/epub) + chunking + pipeline (RAG)
+│       ├── documents/       # L4 — book/doc ingest: parsers (txt/md/pdf/epub) + chunking + pipeline (RAG) + wiki gen
 │       ├── learning/        # transcript distill + fact grading (G1/G2) + dedup (G3) + fact embeddings
 │       ├── skills/          # L5 — SKILL.md registry, namespace precedence (P1)
 │       ├── agent/           # L6 — smol.py (build_agent + ask + chat_turn, semantic recall) + tools.py
@@ -154,6 +154,7 @@ uv run personal-llm skills list          # show discovered SKILL.md skills
 uv run personal-llm recall "..."         # semantic search over curated facts
 uv run personal-llm ingest FILE          # parse/chunk/embed a doc (.txt/.md/.pdf/.epub) into the library
 uv run personal-llm books search "..."   # semantic search over ingested document chunks
+uv run personal-llm wiki build           # summarize ingested docs into wiki/library/ pages
 uv run personal-llm sleep                # run sleep-time once (writes growth log)
 uv run personal-llm status               # vault + inference health check
 

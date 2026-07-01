@@ -124,7 +124,14 @@ class MemoryBackend(Protocol):
         ...
 
     def list_documents(self) -> list[dict]:
-        """Return all ingested documents (`title`, `source_path`, `n_chunks`, `ingested_at`)."""
+        """Return all ingested documents.
+
+        Each is `{id, title, source_path, sha256, n_chunks, ingested_at}`.
+        """
+        ...
+
+    def document_chunk_texts(self, document_id: int, limit: int = 10) -> list[str]:
+        """Return the first `limit` chunk texts of a document, in reading order."""
         ...
 
     def search_chunks(self, query_vector: list[float], k: int, model: str) -> list[dict]:
